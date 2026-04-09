@@ -37,7 +37,7 @@ func GetChannelStatistics(startTimestamp, endTimestamp int, username, tokenName,
 
 	// 构建查询条件
 	tx := LOG_DB.Table("logs").Select(`
-		created_at,
+		MIN(created_at) as created_at,
 		channel_id,
 		COUNT(*) as count,
 		SUM(quota) as quota
@@ -165,7 +165,7 @@ func GetTokenStatistics(startTimestamp, endTimestamp int, username, tokenName, m
 
 	// 构建查询条件
 	tx := LOG_DB.Table("logs").Select(`
-		created_at,
+		MIN(created_at) as created_at,
 		token_name,
 		COUNT(*) as count,
 		SUM(quota) as quota
@@ -270,7 +270,7 @@ func GetUserStatistics(startTimestamp, endTimestamp int, username, tokenName, mo
 
 	// 构建查询条件
 	tx := LOG_DB.Table("logs").Select(`
-		created_at,
+		MIN(created_at) as created_at,
 		username,
 		COUNT(*) as count,
 		SUM(quota) as quota

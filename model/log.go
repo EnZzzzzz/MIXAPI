@@ -503,16 +503,6 @@ func CleanLogBodiesOnly(ctx context.Context, startTimestamp int64, endTimestamp 
 		}
 
 		// 构建查询条件
-		query := LOG_DB
-		if startTimestamp > 0 {
-			query = query.Where("created_at >= ?", startTimestamp)
-		}
-		if endTimestamp > 0 {
-			query = query.Where("created_at <= ?", endTimestamp)
-		}
-
-		// 执行批量更新，将 user_input 和 response_body 设置为空字符串
-		// 使用原生 SQL 确保更新被执行，避免 GORM 的各种默认行为问题
 		var conditions []string
 		var args []interface{}
 
@@ -530,10 +520,26 @@ func CleanLogBodiesOnly(ctx context.Context, startTimestamp int64, endTimestamp 
 			conditions = append(conditions, "1=1")
 		}
 
-		// 构建完整的 SQL，使用子查询来限制更新的行数
-		// SQLite、MySQL、PostgreSQL 都支持通过子查询 LIMIT 的方式
+		// 使用 JOIN 语法，MySQL 支持这种方式
+		// 先查询出需要更新的 ID，然后用 JOIN 更新
 		whereClause := strings.Join(conditions, " AND ")
-		sql := fmt.Sprintf("UPDATE logs SET user_input = '', response_body = '' WHERE id IN (SELECT id FROM logs WHERE %s LIMIT %d)", whereClause, limit)
+
+		var sql string
+		switch {
+		case common.UsingMySQL:
+			// MySQL 使用 JOIN 语法（MySQL 不支持 IN 子查询中使用 LIMIT）
+			sql = fmt.Sprintf("UPDATE logs l JOIN (SELECT id FROM logs WHERE %s ORDER BY id LIMIT %d) AS sub ON l.id = sub.id SET l.user_input = '', l.response_body = ''", whereClause, limit)
+		case common.UsingPostgreSQL:
+			// PostgreSQL 使用 UPDATE ... FROM 语法
+			sql = fmt.Sprintf("UPDATE logs SET user_input = '', response_body = '' FROM (SELECT id FROM logs WHERE %s ORDER BY id LIMIT %d) AS sub WHERE logs.id = sub.id", whereClause, limit)
+		case common.UsingSQLite:
+			// SQLite 支持 IN 子查询中使用 LIMIT
+			sql = fmt.Sprintf("UPDATE logs SET user_input = '', response_body = '' WHERE id IN (SELECT id FROM logs WHERE %s ORDER BY id LIMIT %d)", whereClause, limit)
+		default:
+			// 默认使用 SQLite 语法
+			sql = fmt.Sprintf("UPDATE logs SET user_input = '', response_body = '' WHERE id IN (SELECT id FROM logs WHERE %s ORDER BY id LIMIT %d)", whereClause, limit)
+		}
+
 		result := LOG_DB.WithContext(ctx).Exec(sql, args...)
 		if nil != result.Error {
 			return total, result.Error
