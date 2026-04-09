@@ -154,6 +154,13 @@ func streamMetaResponseZhipu2OpenAI(zhipuResponse *ZhipuStreamMetaResponse) (*dt
 
 func zhipuStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
 	var usage *dto.Usage
+
+	// 获取响应收集器
+	var responseBuilder *strings.Builder
+	if rb, exists := c.Get("response_builder"); exists {
+		responseBuilder = rb.(*strings.Builder)
+	}
+
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Split(bufio.ScanLines)
 	dataChan := make(chan string)
@@ -162,6 +169,11 @@ func zhipuStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 	go func() {
 		for scanner.Scan() {
 			data := scanner.Text()
+			// 收集响应数据到builder
+			if responseBuilder != nil {
+				responseBuilder.WriteString(data)
+				responseBuilder.WriteString("\n")
+			}
 			lines := strings.Split(data, "\n")
 			for i, line := range lines {
 				if len(line) < 5 {
@@ -222,6 +234,14 @@ func zhipuHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respon
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeReadResponseBodyFailed)
 	}
+
+	// 保存完整响应体到context（仅在开启详细日志时）
+	if common.LogDetailEnabled {
+		if rb, exists := c.Get("response_builder"); exists {
+			rb.(*strings.Builder).Write(responseBody)
+		}
+	}
+
 	common.CloseResponseBodyGracefully(resp)
 	err = json.Unmarshal(responseBody, &zhipuResponse)
 	if err != nil {

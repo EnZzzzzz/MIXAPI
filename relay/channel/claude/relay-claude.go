@@ -682,8 +682,21 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 		ResponseText: strings.Builder{},
 		Usage:        &dto.Usage{},
 	}
+
+	// 获取响应收集器
+	var responseBuilder *strings.Builder
+	if rb, exists := c.Get("response_builder"); exists {
+		responseBuilder = rb.(*strings.Builder)
+	}
+
 	var err *types.NewAPIError
 	helper.StreamScannerHandler(c, resp, info, func(data string) bool {
+		// 收集响应数据到builder
+		if responseBuilder != nil {
+			responseBuilder.WriteString(data)
+			responseBuilder.WriteString("\n")
+		}
+
 		err = HandleStreamResponseData(c, info, claudeInfo, data, requestMode)
 		if err != nil {
 			return false
@@ -754,6 +767,14 @@ func ClaudeHandler(c *gin.Context, resp *http.Response, requestMode int, info *r
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}
+
+	// 保存完整响应体到context（仅在开启详细日志时）
+	if common.LogDetailEnabled {
+		if rb, exists := c.Get("response_builder"); exists {
+			rb.(*strings.Builder).Write(responseBody)
+		}
+	}
+
 	if common.DebugEnabled {
 		println("responseBody: ", string(responseBody))
 	}

@@ -70,7 +70,18 @@ func GeminiTextGenerationStreamHandler(c *gin.Context, info *relaycommon.RelayIn
 
 	responseText := strings.Builder{}
 
+	// 获取响应收集器
+	var responseBuilder *strings.Builder
+	if rb, exists := c.Get("response_builder"); exists {
+		responseBuilder = rb.(*strings.Builder)
+	}
+
 	helper.StreamScannerHandler(c, resp, info, func(data string) bool {
+		// 收集响应数据到builder
+		if responseBuilder != nil {
+			responseBuilder.WriteString(data)
+			responseBuilder.WriteString("\n")
+		}
 		var geminiResponse GeminiChatResponse
 		err := common.UnmarshalJsonStr(data, &geminiResponse)
 		if err != nil {

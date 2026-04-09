@@ -114,7 +114,20 @@ func embeddingResponseBaidu2OpenAI(response *BaiduEmbeddingResponse) *dto.OpenAI
 
 func baiduStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*types.NewAPIError, *dto.Usage) {
 	usage := &dto.Usage{}
+
+	// 获取响应收集器
+	var responseBuilder *strings.Builder
+	if rb, exists := c.Get("response_builder"); exists {
+		responseBuilder = rb.(*strings.Builder)
+	}
+
 	helper.StreamScannerHandler(c, resp, info, func(data string) bool {
+		// 收集响应数据到builder
+		if responseBuilder != nil {
+			responseBuilder.WriteString(data)
+			responseBuilder.WriteString("\n")
+		}
+
 		var baiduResponse BaiduChatStreamResponse
 		err := common.Unmarshal([]byte(data), &baiduResponse)
 		if err != nil {
@@ -143,6 +156,14 @@ func baiduHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respon
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}
+
+	// 保存完整响应体到context（仅在开启详细日志时）
+	if common.LogDetailEnabled {
+		if rb, exists := c.Get("response_builder"); exists {
+			rb.(*strings.Builder).Write(responseBody)
+		}
+	}
+
 	common.CloseResponseBodyGracefully(resp)
 	err = json.Unmarshal(responseBody, &baiduResponse)
 	if err != nil {

@@ -21,7 +21,8 @@ type Log struct {
 	CreatedAt        int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:2;index:idx_created_at_type"`
 	Type             int    `json:"type" gorm:"index:idx_created_at_type"`
 	Content          string `json:"content"`
-	UserInput        string `json:"user_input" gorm:"type:text;comment:用户输入内容"`
+	UserInput        string `json:"user_input" gorm:"type:mediumtext;comment:用户输入内容"`
+	ResponseBody     string `json:"response_body" gorm:"type:mediumtext;comment:模型响应内容"`
 	Username         string `json:"username" gorm:"index;index:index_username_model_name,priority:2;default:''"`
 	TokenName        string `json:"token_name" gorm:"index;default:''"`
 	ModelName        string `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
@@ -158,6 +159,8 @@ type RecordConsumeLogParams struct {
 	IsStream         bool                   `json:"is_stream"`
 	Group            string                 `json:"group"`
 	Other            map[string]interface{} `json:"other"`
+	RequestBody      string                 `json:"request_body"`  // 完整请求JSON
+	ResponseBody     string                 `json:"response_body"` // 完整响应JSON
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
@@ -198,7 +201,8 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 			}
 			return ""
 		}(),
-		Other: otherStr,
+		Other:        otherStr,
+		ResponseBody: params.ResponseBody,
 	}
 	err := LOG_DB.Create(log).Error
 	if err != nil {
@@ -465,4 +469,25 @@ func DeleteLogsByTimeRange(ctx context.Context, startTimestamp int64, endTimesta
 	}
 
 	return total, nil
+}
+
+func ExportLogs(startTimestamp int64, endTimestamp int64, username string, modelName string) ([]*Log, error) {
+	var logs []*Log
+	tx := LOG_DB
+
+	if startTimestamp > 0 {
+		tx = tx.Where("created_at >= ?", startTimestamp)
+	}
+	if endTimestamp > 0 {
+		tx = tx.Where("created_at <= ?", endTimestamp)
+	}
+	if username != "" {
+		tx = tx.Where("username = ?", username)
+	}
+	if modelName != "" {
+		tx = tx.Where("model_name like ?", modelName)
+	}
+
+	err := tx.Order("id desc").Find(&logs).Error
+	return logs, err
 }

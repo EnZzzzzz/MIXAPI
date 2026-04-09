@@ -173,6 +173,12 @@ func TextHelper(c *gin.Context) (newAPIError *types.NewAPIError) {
 	// 将 textRequest 存储到 context 中供后续使用
 	c.Set("text_request", textRequest)
 
+	// 创建响应收集器用于存储完整响应
+	if common.LogDetailEnabled {
+		responseBuilder := &strings.Builder{}
+		c.Set("response_builder", responseBuilder)
+	}
+
 	if textRequest.WebSearchOptions != nil {
 		c.Set("chat_completion_web_search_context_size", textRequest.WebSearchOptions.SearchContextSize)
 	}
@@ -308,6 +314,14 @@ func TextHelper(c *gin.Context) (newAPIError *types.NewAPIError) {
 		// reset status code 重置状态码
 		service.ResetStatusCode(newApiErr, statusCodeMappingStr)
 		return newApiErr
+	}
+
+	// 将收集的响应数据转移到context中供postConsumeQuota使用
+	if common.LogDetailEnabled {
+		if rb, exists := c.Get("response_builder"); exists {
+			responseBody := rb.(*strings.Builder).String()
+			c.Set("response_body", responseBody)
+		}
 	}
 
 	if strings.HasPrefix(relayInfo.OriginModelName, "gpt-4o-audio") {
@@ -641,6 +655,33 @@ func postConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo,
 		}
 	}
 
+	// 获取完整请求JSON和响应JSON（仅在开启详细日志时）
+	var requestBody, responseBody string
+	if common.LogDetailEnabled {
+		// 获取完整请求JSON
+		if textRequestInterface, exists := ctx.Get("text_request"); exists {
+			if tr, ok := textRequestInterface.(*dto.GeneralOpenAIRequest); ok && tr != nil {
+				if bytes, err := json.Marshal(tr); err == nil {
+					requestBody = string(bytes)
+				}
+			}
+		}
+
+		// 获取完整响应JSON
+		if rb, exists := ctx.Get("response_body"); exists {
+			responseBody = rb.(string)
+		}
+
+		// 大小限制检查（KB转字节）
+		maxSize := common.LogDetailMaxSize * 1024
+		if len(requestBody) > maxSize {
+			requestBody = requestBody[:maxSize]
+		}
+		if len(responseBody) > maxSize {
+			responseBody = responseBody[:maxSize]
+		}
+	}
+
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     promptTokens,
@@ -656,5 +697,7 @@ func postConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo,
 		IsStream:         relayInfo.IsStream,
 		Group:            relayInfo.UsingGroup,
 		Other:            other,
+		RequestBody:      requestBody,
+		ResponseBody:     responseBody,
 	})
 }

@@ -24,6 +24,14 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeReadResponseBodyFailed)
 	}
+
+	// 保存完整响应体到context（仅在开启详细日志时）
+	if common.LogDetailEnabled {
+		if rb, exists := c.Get("response_builder"); exists {
+			rb.(*strings.Builder).Write(responseBody)
+		}
+	}
+
 	err = common.Unmarshal(responseBody, &responsesResponse)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
@@ -56,7 +64,18 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	var usage = &dto.Usage{}
 	var responseTextBuilder strings.Builder
 
+	// 获取响应收集器
+	var responseBuilder *strings.Builder
+	if rb, exists := c.Get("response_builder"); exists {
+		responseBuilder = rb.(*strings.Builder)
+	}
+
 	helper.StreamScannerHandler(c, resp, info, func(data string) bool {
+		// 收集响应数据到builder
+		if responseBuilder != nil {
+			responseBuilder.WriteString(data)
+			responseBuilder.WriteString("\n")
+		}
 
 		// 检查当前数据是否包含 completed 状态和 usage 信息
 		var streamResponse dto.ResponsesStreamResponse

@@ -1,10 +1,15 @@
 package controller
 
 import (
+	"bytes"
+	"encoding/csv"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"one-api/common"
 	"one-api/model"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -180,4 +185,91 @@ func DeleteHistoryLogs(c *gin.Context) {
 		"data":    count,
 	})
 	return
+}
+
+func ExportLogs(c *gin.Context) {
+	// 只有管理员可以导出
+	userRole := c.GetInt("role")
+	if userRole < common.RoleAdminUser {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "only admin can export logs",
+		})
+		return
+	}
+
+	// 解析参数
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	format := c.DefaultQuery("format", "json")
+	username := c.Query("username")
+	modelName := c.Query("model_name")
+
+	if startTimestamp == 0 || endTimestamp == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "start_timestamp and end_timestamp are required",
+		})
+		return
+	}
+
+	// 查询数据
+	logs, err := model.ExportLogs(startTimestamp, endTimestamp, username, modelName)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	// 生成文件名
+	startStr := time.Unix(startTimestamp, 0).Format("20060102")
+	endStr := time.Unix(endTimestamp, 0).Format("20060102")
+	filename := fmt.Sprintf("logs_%s_%s.%s", startStr, endStr, format)
+
+	// 根据格式导出
+	var data []byte
+	if format == "csv" {
+		data, err = convertLogsToCSV(logs)
+	} else {
+		data, err = json.MarshalIndent(logs, "", "  ")
+	}
+
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	c.Header("Content-Type", "application/octet-stream")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+	c.Data(http.StatusOK, "application/octet-stream", data)
+}
+
+func convertLogsToCSV(logs []*model.Log) ([]byte, error) {
+	var buf bytes.Buffer
+	writer := csv.NewWriter(&buf)
+
+	// 写入表头
+	headers := []string{"id", "user_id", "created_at", "type", "username", "model_name",
+		"prompt_tokens", "completion_tokens", "quota", "user_input", "response_body"}
+	writer.Write(headers)
+
+	// 写入数据
+	for _, log := range logs {
+		record := []string{
+			strconv.Itoa(log.Id),
+			strconv.Itoa(log.UserId),
+			strconv.FormatInt(log.CreatedAt, 10),
+			strconv.Itoa(log.Type),
+			log.Username,
+			log.ModelName,
+			strconv.Itoa(log.PromptTokens),
+			strconv.Itoa(log.CompletionTokens),
+			strconv.Itoa(log.Quota),
+			log.UserInput,
+			log.ResponseBody,
+		}
+		writer.Write(record)
+	}
+
+	writer.Flush()
+	return buf.Bytes(), writer.Error()
 }

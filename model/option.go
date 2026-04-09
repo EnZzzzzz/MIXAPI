@@ -45,6 +45,8 @@ func InitOptionMap() {
 	common.OptionMap["AutomaticEnableChannelEnabled"] = strconv.FormatBool(common.AutomaticEnableChannelEnabled)
 	common.OptionMap["LogConsumeEnabled"] = strconv.FormatBool(common.LogConsumeEnabled)
 	common.OptionMap["LogUserInputEnabled"] = strconv.FormatBool(common.LogUserInputEnabled)
+	common.OptionMap["LogDetailEnabled"] = strconv.FormatBool(common.LogDetailEnabled)
+	common.OptionMap["LogDetailMaxSize"] = strconv.Itoa(common.LogDetailMaxSize)
 	common.OptionMap["DisplayInCurrencyEnabled"] = strconv.FormatBool(common.DisplayInCurrencyEnabled)
 	common.OptionMap["DisplayTokenStatEnabled"] = strconv.FormatBool(common.DisplayTokenStatEnabled)
 	common.OptionMap["DrawingEnabled"] = strconv.FormatBool(common.DrawingEnabled)
@@ -237,6 +239,8 @@ func updateOptionMap(key string, value string) (err error) {
 			common.LogConsumeEnabled = boolValue
 		case "LogUserInputEnabled":
 			common.LogUserInputEnabled = boolValue
+		case "LogDetailEnabled":
+			common.LogDetailEnabled = boolValue
 		case "DisplayInCurrencyEnabled":
 			common.DisplayInCurrencyEnabled = boolValue
 		case "DisplayTokenStatEnabled":
@@ -379,6 +383,8 @@ func updateOptionMap(key string, value string) (err error) {
 		err = setting.UpdateModelRequestRateLimitGroupByJSONString(value)
 	case "RetryTimes":
 		common.RetryTimes, _ = strconv.Atoi(value)
+	case "LogDetailMaxSize":
+		common.LogDetailMaxSize, _ = strconv.Atoi(value)
 	case "DataExportInterval":
 		common.DataExportInterval, _ = strconv.Atoi(value)
 	case "DataExportDefaultTime":

@@ -174,10 +174,21 @@ func awsStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.Rel
 		Usage:        &dto.Usage{},
 	}
 
+	// 获取响应收集器
+	var responseBuilder *strings.Builder
+	if rb, exists := c.Get("response_builder"); exists {
+		responseBuilder = rb.(*strings.Builder)
+	}
+
 	for event := range stream.Events() {
 		switch v := event.(type) {
 		case *bedrockruntimeTypes.ResponseStreamMemberChunk:
 			info.SetFirstResponseTime()
+			// 收集响应数据到builder
+			if responseBuilder != nil {
+				responseBuilder.Write(v.Value.Bytes)
+				responseBuilder.WriteString("\n")
+			}
 			respErr := claude.HandleStreamResponseData(c, info, claudeInfo, string(v.Value.Bytes), RequestModeMessage)
 			if respErr != nil {
 				return respErr, nil

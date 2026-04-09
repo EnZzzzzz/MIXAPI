@@ -83,6 +83,13 @@ func cohereStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	createdTime := common.GetTimestamp()
 	usage := &dto.Usage{}
 	responseText := ""
+
+	// 获取响应收集器
+	var responseBuilder *strings.Builder
+	if rb, exists := c.Get("response_builder"); exists {
+		responseBuilder = rb.(*strings.Builder)
+	}
+
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
 		if atEOF && len(data) == 0 {
@@ -115,6 +122,11 @@ func cohereStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 				info.FirstResponseTime = time.Now()
 			}
 			data = strings.TrimSuffix(data, "\r")
+			// 收集响应数据到builder
+			if responseBuilder != nil {
+				responseBuilder.WriteString(data)
+				responseBuilder.WriteString("\n")
+			}
 			var cohereResp CohereResponse
 			err := json.Unmarshal([]byte(data), &cohereResp)
 			if err != nil {
@@ -175,6 +187,14 @@ func cohereHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
+
+	// 保存完整响应体到context（仅在开启详细日志时）
+	if common.LogDetailEnabled {
+		if rb, exists := c.Get("response_builder"); exists {
+			rb.(*strings.Builder).Write(responseBody)
+		}
+	}
+
 	common.CloseResponseBodyGracefully(resp)
 	var cohereResp CohereResponseResult
 	err = json.Unmarshal(responseBody, &cohereResp)
