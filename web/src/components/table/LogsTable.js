@@ -257,6 +257,7 @@ const LogsTable = () => {
     TYPE: 'type',
     MODEL: 'model',
     USER_INPUT: 'user_input',
+    RESPONSE_BODY: 'response_body',
     USE_TIME: 'use_time',
     PROMPT: 'prompt',
     COMPLETION: 'completion',
@@ -300,6 +301,7 @@ const LogsTable = () => {
       [COLUMN_KEYS.TYPE]: true,
       [COLUMN_KEYS.MODEL]: true,
       [COLUMN_KEYS.USER_INPUT]: true,
+      [COLUMN_KEYS.RESPONSE_BODY]: true,
       [COLUMN_KEYS.USE_TIME]: true,
       [COLUMN_KEYS.PROMPT]: true,
       [COLUMN_KEYS.COMPLETION]: true,
@@ -510,7 +512,59 @@ const LogsTable = () => {
                 rows: 2,
                 showTooltip: {
                   type: 'popover',
-                  opts: { style: { width: 300 } },
+                  opts: {
+                    style: {
+                      width: 500,
+                      maxHeight: 500,
+                      overflow: 'auto',
+                      wordBreak: 'break-all',
+                      whiteSpace: 'pre-wrap',
+                    },
+                  },
+                },
+              }}
+              style={{ maxWidth: 200 }}
+              onClick={(event) => {
+                copyText(event, text);
+              }}
+              className="cursor-pointer"
+            >
+              {text}
+            </Paragraph>
+          );
+        }
+        return <></>;
+      },
+    },
+    {
+      key: COLUMN_KEYS.RESPONSE_BODY,
+      title: t('模型输出'),
+      dataIndex: 'response_body',
+      render: (text, record, index) => {
+        // 只显示消费和错误类型的日志的模型输出
+        if (record.type === 2 || record.type === 5) {
+          if (!text || text.trim() === '') {
+            return (
+              <Tag color='grey' shape='circle'>
+                {t('无')}
+              </Tag>
+            );
+          }
+          return (
+            <Paragraph
+              ellipsis={{
+                rows: 2,
+                showTooltip: {
+                  type: 'popover',
+                  opts: {
+                    style: {
+                      width: 600,
+                      maxHeight: 600,
+                      overflow: 'auto',
+                      wordBreak: 'break-all',
+                      whiteSpace: 'pre-wrap',
+                    },
+                  },
                 },
               }}
               style={{ maxWidth: 200 }}
@@ -986,6 +1040,13 @@ const LogsTable = () => {
         expandDataLocal.push({
           key: t('用户输入内容'),
           value: logs[i].user_input,
+        });
+      }
+      // 添加模型输出内容到展开行（仅对消费和错误类型的日志）
+      if ((logs[i].type === 2 || logs[i].type === 5) && logs[i].response_body && logs[i].response_body.trim() !== '') {
+        expandDataLocal.push({
+          key: t('模型输出内容'),
+          value: logs[i].response_body,
         });
       }
       if (other?.ws || other?.audio) {
