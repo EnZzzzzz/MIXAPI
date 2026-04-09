@@ -491,3 +491,60 @@ func ExportLogs(startTimestamp int64, endTimestamp int64, username string, model
 	err := tx.Order("id desc").Find(&logs).Error
 	return logs, err
 }
+
+// CleanLogBodiesOnly 根据时间范围清理日志的 user_input 和 response_body 字段
+// 只清理这两个字段的内容，保留其他日志元数据
+func CleanLogBodiesOnly(ctx context.Context, startTimestamp int64, endTimestamp int64, limit int) (int64, error) {
+	var total int64 = 0
+
+	for {
+		if nil != ctx.Err() {
+			return total, ctx.Err()
+		}
+
+		// 构建查询条件
+		query := LOG_DB
+		if startTimestamp > 0 {
+			query = query.Where("created_at >= ?", startTimestamp)
+		}
+		if endTimestamp > 0 {
+			query = query.Where("created_at <= ?", endTimestamp)
+		}
+
+		// 执行批量更新，将 user_input 和 response_body 设置为空字符串
+		// 使用原生 SQL 确保更新被执行，避免 GORM 的各种默认行为问题
+		var conditions []string
+		var args []interface{}
+
+		if startTimestamp > 0 {
+			conditions = append(conditions, "created_at >= ?")
+			args = append(args, startTimestamp)
+		}
+		if endTimestamp > 0 {
+			conditions = append(conditions, "created_at <= ?")
+			args = append(args, endTimestamp)
+		}
+
+		if len(conditions) == 0 {
+			// 如果没有时间条件，使用 1=1
+			conditions = append(conditions, "1=1")
+		}
+
+		// 构建完整的 SQL，使用子查询来限制更新的行数
+		// SQLite、MySQL、PostgreSQL 都支持通过子查询 LIMIT 的方式
+		whereClause := strings.Join(conditions, " AND ")
+		sql := fmt.Sprintf("UPDATE logs SET user_input = '', response_body = '' WHERE id IN (SELECT id FROM logs WHERE %s LIMIT %d)", whereClause, limit)
+		result := LOG_DB.WithContext(ctx).Exec(sql, args...)
+		if nil != result.Error {
+			return total, result.Error
+		}
+
+		total += result.RowsAffected
+
+		if result.RowsAffected < int64(limit) {
+			break
+		}
+	}
+
+	return total, nil
+}

@@ -154,7 +154,7 @@ func DeleteHistoryLogs(c *gin.Context) {
 	// 获取开始和结束时间戳参数
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
-	
+
 	// 兼容旧的target_timestamp参数
 	if startTimestamp == 0 && endTimestamp == 0 {
 		targetTimestamp, _ := strconv.ParseInt(c.Query("target_timestamp"), 10, 64)
@@ -163,7 +163,7 @@ func DeleteHistoryLogs(c *gin.Context) {
 			endTimestamp = targetTimestamp
 		}
 	}
-	
+
 	// 验证参数
 	if startTimestamp == 0 && endTimestamp == 0 {
 		c.JSON(http.StatusOK, gin.H{
@@ -172,9 +172,23 @@ func DeleteHistoryLogs(c *gin.Context) {
 		})
 		return
 	}
-	
-	// 调用模型层函数删除日志
-	count, err := model.DeleteLogsByTimeRange(c.Request.Context(), startTimestamp, endTimestamp, 100)
+
+	// 获取清理模式参数，默认为 "all"
+	cleanMode := c.DefaultQuery("clean_mode", "all")
+
+	var count int64
+	var err error
+
+	// 根据清理模式执行不同的操作
+	switch cleanMode {
+	case "body_only":
+		// 仅清理 user_input 和 response_body 字段
+		count, err = model.CleanLogBodiesOnly(c.Request.Context(), startTimestamp, endTimestamp, 100)
+	default:
+		// 默认模式：删除整行（现有行为）
+		count, err = model.DeleteLogsByTimeRange(c.Request.Context(), startTimestamp, endTimestamp, 100)
+	}
+
 	if err != nil {
 		common.ApiError(c, err)
 		return
