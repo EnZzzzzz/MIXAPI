@@ -124,6 +124,17 @@ go run main.go
 
 #### 自行构建docker镜像，容器运行
 下载本项目Dockerfile文件，自行构建docker镜像,容器运行，可用于测试和正式运行
+
+**编译说明**：构建 Docker 镜像前需要先编译二进制文件，请使用以下命令编译（确保生成的二进制文件可在 Alpine 容器中运行）：
+```shell
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o mixapi
+```
+
+> **为什么要加这些参数？**
+> - `CGO_ENABLED=0`：**必须**。禁用 CGO 进行静态编译，否则二进制文件会依赖 glibc，而 Alpine Linux 使用 musl libc，会导致运行时报错 `not found`
+> - `GOOS=linux GOARCH=amd64`：**建议**。确保在非 Linux 系统（如 macOS、Windows）上也能编译出 Linux 可执行文件
+> - `-ldflags="-s -w"`：**可选**。去除符号表和调试信息，减小二进制文件体积
+
 ```shell
 wget -O Dockerfile https://raw.githubusercontent.com/aiprodcoder/MIXAPI/main/Dockerfile
 docker build -t mixapi .   
