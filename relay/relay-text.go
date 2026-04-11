@@ -22,7 +22,6 @@ import (
 	"one-api/types"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/shopspring/decimal"
@@ -30,77 +29,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// 提取用户输入内容（从 messages 中提取用户发送的消息）
-// 修改为只提取最后一条用户消息，避免记录历史输入
-func extractUserInputFromMessages(messages []dto.Message) string {
-	if len(messages) == 0 {
+// 提取用户输入内容（记录完整的 messages 数组）
+// 提取用户输入内容（记录完整请求JSON）
+func extractUserInputFromRequest(textRequest *dto.GeneralOpenAIRequest) string {
+	if textRequest == nil {
 		return ""
 	}
 
-	// 从后往前查找，只提取最后一条用户消息
-	for i := len(messages) - 1; i >= 0; i-- {
-		message := messages[i]
-		if message.Role == "user" {
-			content := message.StringContent()
-			if content != "" {
-				// 过滤代码类内容
-				if isCodeContent(content) {
-					continue
-				}
-				// 只保留汉字内容
-				filteredContent := filterChineseContent(content)
-				if filteredContent != "" {
-					return filteredContent
-				}
-			}
-		}
-	}
+	// 将完整请求对象转为 JSON 字符串（脱敏处理，不记录api_key等敏感信息）
+	requestCopy := *textRequest
+	// 移除可能包含敏感信息的字段
+	requestCopy.User = ""
 
-	// 如果没有找到合适的用户消息，返回最后一条消息的内容（作为备选）
-	lastContent := messages[len(messages)-1].StringContent()
-	// 过滤代码类内容
-	if isCodeContent(lastContent) {
+	bytes, err := json.Marshal(requestCopy)
+	if err != nil {
 		return ""
 	}
-	// 只保留汉字内容
-	return filterChineseContent(lastContent)
-}
-
-// 检查是否为代码类内容
-func isCodeContent(content string) bool {
-	// 定义代码类关键词
-	codeKeywords := []string{
-		"VSCode Open Tabs",
-		"Current Time",
-		"Current Cost",
-		"Current Mode",
-		"REMINDERS",
-		"VSCode Visible Files",
-	}
-
-	// 检查是否包含代码类关键词
-	for _, keyword := range codeKeywords {
-		if strings.Contains(content, keyword) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// 过滤并只保留汉字内容
-func filterChineseContent(content string) string {
-	// 使用正则表达式匹配汉字
-	var chineseContent strings.Builder
-	for _, r := range content {
-		// 检查字符是否为汉字
-		if unicode.Is(unicode.Scripts["Han"], r) {
-			chineseContent.WriteRune(r)
-		}
-	}
-
-	// 返回过滤后的汉字内容
-	return chineseContent.String()
+	return string(bytes)
 }
 
 func getAndValidateTextRequest(c *gin.Context, relayInfo *relaycommon.RelayInfo) (*dto.GeneralOpenAIRequest, error) {
@@ -650,7 +595,7 @@ func postConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo,
 	if common.LogUserInputEnabled {
 		if textRequestInterface, exists := ctx.Get("text_request"); exists {
 			if textRequest, ok := textRequestInterface.(*dto.GeneralOpenAIRequest); ok && textRequest != nil {
-				userInput = extractUserInputFromMessages(textRequest.Messages)
+				userInput = extractUserInputFromRequest(textRequest)
 			}
 		}
 	}

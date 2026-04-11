@@ -507,30 +507,47 @@ const LogsTable = () => {
             );
           }
           return (
-            <Paragraph
-              ellipsis={{
-                rows: 2,
-                showTooltip: {
-                  type: 'popover',
-                  opts: {
-                    style: {
-                      width: 500,
-                      maxHeight: 500,
-                      overflow: 'auto',
-                      wordBreak: 'break-all',
-                      whiteSpace: 'pre-wrap',
-                    },
+            <Button
+              theme='light'
+              type='primary'
+              size='small'
+              onClick={() => {
+                let content = text;
+                // 尝试格式化 JSON
+                try {
+                  const parsed = JSON.parse(text);
+                  content = JSON.stringify(parsed, null, 2);
+                } catch (e) {
+                  // 不是 JSON，保持原样
+                }
+                Modal.info({
+                  title: t('用户输入详情'),
+                  content: (
+                    <div style={{ padding: 12, maxHeight: 600, overflow: 'auto' }}>
+                      <pre style={{
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-all',
+                        backgroundColor: '#f5f5f5',
+                        padding: 16,
+                        borderRadius: 8,
+                        fontSize: 12
+                      }}>
+                        {content}
+                      </pre>
+                    </div>
+                  ),
+                  centered: true,
+                  width: 800,
+                  okText: t('复制'),
+                  onOk: () => {
+                    copy(content);
+                    showSuccess(t('已复制到剪贴板'));
                   },
-                },
+                });
               }}
-              style={{ maxWidth: 200 }}
-              onClick={(event) => {
-                copyText(event, text);
-              }}
-              className="cursor-pointer"
             >
-              {text}
-            </Paragraph>
+              {t('查看')}
+            </Button>
           );
         }
         return <></>;
@@ -551,30 +568,47 @@ const LogsTable = () => {
             );
           }
           return (
-            <Paragraph
-              ellipsis={{
-                rows: 2,
-                showTooltip: {
-                  type: 'popover',
-                  opts: {
-                    style: {
-                      width: 600,
-                      maxHeight: 600,
-                      overflow: 'auto',
-                      wordBreak: 'break-all',
-                      whiteSpace: 'pre-wrap',
-                    },
+            <Button
+              theme='light'
+              type='secondary'
+              size='small'
+              onClick={() => {
+                let content = text;
+                // 尝试格式化 JSON
+                try {
+                  const parsed = JSON.parse(text);
+                  content = JSON.stringify(parsed, null, 2);
+                } catch (e) {
+                  // 不是 JSON，保持原样
+                }
+                Modal.info({
+                  title: t('模型输出详情'),
+                  content: (
+                    <div style={{ padding: 12, maxHeight: 600, overflow: 'auto' }}>
+                      <pre style={{
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-all',
+                        backgroundColor: '#f5f5f5',
+                        padding: 16,
+                        borderRadius: 8,
+                        fontSize: 12
+                      }}>
+                        {content}
+                      </pre>
+                    </div>
+                  ),
+                  centered: true,
+                  width: 800,
+                  okText: t('复制'),
+                  onOk: () => {
+                    copy(content);
+                    showSuccess(t('已复制到剪贴板'));
                   },
-                },
+                });
               }}
-              style={{ maxWidth: 200 }}
-              onClick={(event) => {
-                copyText(event, text);
-              }}
-              className="cursor-pointer"
             >
-              {text}
-            </Paragraph>
+              {t('查看')}
+            </Button>
           );
         }
         return <></>;
