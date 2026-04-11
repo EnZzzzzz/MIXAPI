@@ -1077,20 +1077,7 @@ const LogsTable = () => {
           value: `${logs[i].channel} - ${logs[i].channel_name || '[未知]'}`,
         });
       }
-      // 添加用户输入内容到展开行（仅对消费和错误类型的日志）
-      if ((logs[i].type === 2 || logs[i].type === 5) && logs[i].user_input && logs[i].user_input.trim() !== '') {
-        expandDataLocal.push({
-          key: t('用户输入内容'),
-          value: logs[i].user_input,
-        });
-      }
-      // 添加模型输出内容到展开行（仅对消费和错误类型的日志）
-      if ((logs[i].type === 2 || logs[i].type === 5) && logs[i].response_body && logs[i].response_body.trim() !== '') {
-        expandDataLocal.push({
-          key: t('模型输出内容'),
-          value: logs[i].response_body,
-        });
-      }
+      // 不再展开行显示用户输入内容和模型输出内容
       if (other?.ws || other?.audio) {
         expandDataLocal.push({
           key: t('语音输入'),
