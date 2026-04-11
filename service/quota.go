@@ -300,6 +300,24 @@ func PostClaudeConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo,
 
 	other := GenerateClaudeOtherInfo(ctx, relayInfo, modelRatio, groupRatio, completionRatio,
 		cacheTokens, cacheRatio, cacheCreationTokens, cacheCreationRatio, modelPrice, priceData.GroupRatioInfo.GroupSpecialRatio)
+
+	var requestBody, responseBody, userInput string
+	if common.LogDetailEnabled {
+		if rb, exists := ctx.Get("claude_request_body"); exists {
+			requestBody = rb.(string)
+		}
+		if rb, exists := ctx.Get("response_body"); exists {
+			responseBody = rb.(string)
+		}
+	}
+	if common.LogUserInputEnabled {
+		if reqObj, exists := ctx.Get("claude_request"); exists && reqObj != nil {
+			if b, err := common.Marshal(reqObj); err == nil {
+				userInput = string(b)
+			}
+		}
+	}
+
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     promptTokens,
@@ -308,13 +326,15 @@ func PostClaudeConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo,
 		TokenName:        tokenName,
 		Quota:            quota,
 		Content:          logContent,
-		UserInput:        "", // Claude模型暂不记录用户输入
+		UserInput:        userInput,
 		TokenId:          relayInfo.TokenId,
 		UserQuota:        userQuota,
 		UseTimeSeconds:   int(useTimeSeconds),
 		IsStream:         relayInfo.IsStream,
 		Group:            relayInfo.UsingGroup,
 		Other:            other,
+		RequestBody:      requestBody,
+		ResponseBody:     responseBody,
 	})
 
 }

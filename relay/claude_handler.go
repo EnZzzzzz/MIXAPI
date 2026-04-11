@@ -47,6 +47,13 @@ func ClaudeHelper(c *gin.Context) (newAPIError *types.NewAPIError) {
 		relayInfo.IsStream = true
 	}
 
+	if common.LogUserInputEnabled || common.LogDetailEnabled {
+		c.Set("claude_request", textRequest)
+	}
+	if common.LogDetailEnabled {
+		c.Set("response_builder", &strings.Builder{})
+	}
+
 	err = helper.ModelMappedHelper(c, relayInfo, textRequest)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeChannelModelMappedError)
@@ -146,6 +153,24 @@ func ClaudeHelper(c *gin.Context) (newAPIError *types.NewAPIError) {
 		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
 		return newAPIError
 	}
+
+	if common.LogDetailEnabled {
+		if rb, exists := c.Get("response_builder"); exists {
+			responseBody := rb.(*strings.Builder).String()
+			c.Set("response_body", responseBody)
+		}
+		if reqObj, exists := c.Get("claude_request"); exists && reqObj != nil {
+			if b, err := common.Marshal(reqObj); err == nil {
+				maxSize := common.LogDetailMaxSize * 1024
+				s := string(b)
+				if len(s) > maxSize {
+					s = s[:maxSize]
+				}
+				c.Set("claude_request_body", s)
+			}
+		}
+	}
+
 	service.PostClaudeConsumeQuota(c, relayInfo, usage.(*dto.Usage), preConsumedQuota, userQuota, priceData, "")
 	return nil
 }
