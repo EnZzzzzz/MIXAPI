@@ -515,7 +515,8 @@ const LogsTable = () => {
               theme='light'
               type='primary'
               size='small'
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 let content = text;
                 // 尝试格式化 JSON
                 try {
@@ -577,7 +578,8 @@ const LogsTable = () => {
               theme='light'
               type='secondary'
               size='small'
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 let content = text;
                 // 尝试格式化 JSON
                 try {
