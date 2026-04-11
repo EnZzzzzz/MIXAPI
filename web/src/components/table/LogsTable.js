@@ -353,11 +353,13 @@ const LogsTable = () => {
       key: COLUMN_KEYS.TIME,
       title: t('时间'),
       dataIndex: 'timestamp2string',
+      width: 200,
     },
     {
       key: COLUMN_KEYS.CHANNEL,
       title: t('渠道'),
       dataIndex: 'channel',
+      width: 120,
       className: isAdmin() ? 'tableShow' : 'tableHiddle',
       render: (text, record, index) => {
         let isMultiKey = false
@@ -394,6 +396,7 @@ const LogsTable = () => {
       key: COLUMN_KEYS.USERNAME,
       title: t('用户'),
       dataIndex: 'username',
+      width: 120,
       className: isAdmin() ? 'tableShow' : 'tableHiddle',
       render: (text, record, index) => {
         return isAdminUser ? (
@@ -496,6 +499,7 @@ const LogsTable = () => {
       key: COLUMN_KEYS.USER_INPUT,
       title: t('用户输入'),
       dataIndex: 'user_input',
+      width: 110,
       render: (text, record, index) => {
         // 只显示消费和错误类型的日志的用户输入
         if (record.type === 2 || record.type === 5) {
@@ -557,6 +561,7 @@ const LogsTable = () => {
       key: COLUMN_KEYS.RESPONSE_BODY,
       title: t('模型输出'),
       dataIndex: 'response_body',
+      width: 110,
       render: (text, record, index) => {
         // 只显示消费和错误类型的日志的模型输出
         if (record.type === 2 || record.type === 5) {
@@ -649,6 +654,7 @@ const LogsTable = () => {
       key: COLUMN_KEYS.PROMPT,
       title: t('提示'),
       dataIndex: 'prompt_tokens',
+      width: 90,
       render: (text, record, index) => {
         return record.type === 0 || record.type === 2 || record.type === 5 ? (
           <>{<span> {text} </span>}</>
@@ -661,6 +667,7 @@ const LogsTable = () => {
       key: COLUMN_KEYS.COMPLETION,
       title: t('补全'),
       dataIndex: 'completion_tokens',
+      width: 90,
       render: (text, record, index) => {
         return parseInt(text) > 0 &&
           (record.type === 0 || record.type === 2 || record.type === 5) ? (
@@ -715,6 +722,7 @@ const LogsTable = () => {
       key: COLUMN_KEYS.RETRY,
       title: t('重试'),
       dataIndex: 'retry',
+      width: 180,
       className: isAdmin() ? 'tableShow' : 'tableHiddle',
       render: (text, record, index) => {
         if (!(record.type === 2 || record.type === 5)) {
