@@ -270,11 +270,6 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
 		return claudeResponses
 	} else {
 		chosenChoice := openAIResponse.Choices[0]
-		if chosenChoice.FinishReason != nil && *chosenChoice.FinishReason != "" {
-			// should be done
-			info.FinishReason = *chosenChoice.FinishReason
-			return claudeResponses
-		}
 		if info.Done {
 			claudeResponses = append(claudeResponses, generateStopBlock(info.ClaudeConvertInfo.Index))
 			oaiUsage := info.ClaudeConvertInfo.Usage
@@ -295,7 +290,13 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
 			claudeResponses = append(claudeResponses, &dto.ClaudeResponse{
 				Type: "message_stop",
 			})
-		} else {
+			return claudeResponses
+		}
+		if chosenChoice.FinishReason != nil && *chosenChoice.FinishReason != "" {
+			// should be done
+			info.FinishReason = *chosenChoice.FinishReason
+			return claudeResponses
+		}
 			var claudeResponse dto.ClaudeResponse
 			var isEmpty bool
 			claudeResponse.Type = "content_block_delta"
@@ -372,7 +373,6 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
 			if !isEmpty {
 				claudeResponses = append(claudeResponses, &claudeResponse)
 			}
-		}
 	}
 
 	return claudeResponses
