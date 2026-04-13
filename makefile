@@ -4,19 +4,23 @@ BINARY_NAME = mixapi
 DOCKER_IMAGE = mixapi
 VERSION := $(shell cat VERSION 2>/dev/null || echo "dev")
 
-.PHONY: all build-frontend start-backend build-go build-docker
+.PHONY: all build-frontend start-backend stop-dev build-go build-docker
 
 all: build-frontend build-go build-docker
 
-start-dev: build-frontend start-backend
+build-and-start: build-frontend start
 
 build-frontend:
 	@echo "Building frontend..."
 	@cd $(FRONTEND_DIR) && bun install && DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$(VERSION) bun run build
 
-start-backend:
+start:
 	@echo "Starting backend dev server..."
 	@cd $(BACKEND_DIR) && go run main.go &
+
+stop:
+	@pkill -f "go run main.go" || true
+	@echo "Backend dev server stopped"
 
 build-go:
 	@echo "Building Go binary: $(BINARY_NAME) ..."
