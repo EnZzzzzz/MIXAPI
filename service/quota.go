@@ -277,6 +277,12 @@ func PostClaudeConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo,
 	totalTokens := promptTokens + completionTokens
 
 	var logContent string
+	if !priceData.UsePrice {
+		logContent = fmt.Sprintf("模型倍率 %.2f，补全倍率 %.2f，分组倍率 %.2f", modelRatio, completionRatio, groupRatio)
+	} else {
+		logContent = fmt.Sprintf("模型价格 %.2f，分组倍率 %.2f", modelPrice, groupRatio)
+	}
+
 	// record all the consume log even if quota is 0
 	if totalTokens == 0 {
 		// in this case, must be some error happened
@@ -308,6 +314,20 @@ func PostClaudeConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo,
 		}
 		if rb, exists := ctx.Get("response_body"); exists {
 			responseBody = rb.(string)
+		}
+
+		// 如果是流式响应，将多个 chunk 聚合成一个标准 OpenAI 响应格式
+		if relayInfo.IsStream && responseBody != "" {
+			responseBody = AggregateStreamChunks(responseBody, usage, modelName)
+		}
+
+		// 大小限制检查（KB转字节）
+		maxSize := common.LogDetailMaxSize * 1024
+		if len(requestBody) > maxSize {
+			requestBody = requestBody[:maxSize]
+		}
+		if len(responseBody) > maxSize {
+			responseBody = responseBody[:maxSize]
 		}
 	}
 	if common.LogUserInputEnabled {
