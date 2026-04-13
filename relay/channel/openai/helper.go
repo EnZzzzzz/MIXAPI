@@ -173,18 +173,47 @@ func handleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 
 	case relaycommon.RelayFormatClaude:
 		info.ClaudeConvertInfo.Done = true
-		var streamResponse dto.ChatCompletionsStreamResponse
-		if err := json.Unmarshal(common.StringToByteSlice(lastStreamData), &streamResponse); err != nil {
-			common.SysError("error unmarshalling stream response: " + err.Error())
+		info.ClaudeConvertInfo.Usage = usage
+
+		terminationSent := false
+		if lastStreamData != "" {
+			var streamResponse dto.ChatCompletionsStreamResponse
+			if err := json.Unmarshal(common.StringToByteSlice(lastStreamData), &streamResponse); err != nil {
+				common.SysError("error unmarshalling stream response: " + err.Error())
+			} else {
+				claudeResponses := service.StreamResponseOpenAI2Claude(&streamResponse, info)
+				for _, resp := range claudeResponses {
+					helper.ClaudeData(c, *resp)
+					if resp.Type == "message_stop" {
+						terminationSent = true
+					}
+				}
+			}
+		}
+
+		// 终止 blocks 已发送，直接返回
+		if terminationSent {
 			return
 		}
 
-		info.ClaudeConvertInfo.Usage = usage
-
-		claudeResponses := service.StreamResponseOpenAI2Claude(&streamResponse, info)
-		for _, resp := range claudeResponses {
-			helper.ClaudeData(c, *resp)
+		// 兜底：确保始终发送终止 blocks
+		if info.ClaudeConvertInfo.LastMessagesType != "" {
+			helper.ClaudeData(c, *service.GenerateStopBlock(info.ClaudeConvertInfo.Index))
 		}
+		messageDelta := &dto.ClaudeResponse{
+			Type: "message_delta",
+			Delta: &dto.ClaudeMediaMessage{
+				StopReason: common.GetPointer[string](service.StopReasonOpenAI2Claude(info.FinishReason)),
+			},
+		}
+		if usage != nil {
+			messageDelta.Usage = &dto.ClaudeUsage{
+				InputTokens:  usage.PromptTokens,
+				OutputTokens: usage.CompletionTokens,
+			}
+		}
+		helper.ClaudeData(c, *messageDelta)
+		helper.ClaudeData(c, dto.ClaudeResponse{Type: "message_stop"})
 	}
 }
 
