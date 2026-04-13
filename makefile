@@ -19,7 +19,7 @@ start:
 	@cd $(BACKEND_DIR) && go run main.go &
 
 stop:
-	@pkill -f "go run main.go" || true
+	@-lsof -ti:3000 | xargs kill -9 2>/dev/null || true
 	@echo "Backend dev server stopped"
 
 build-go:
