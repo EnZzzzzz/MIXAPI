@@ -7,6 +7,7 @@ import (
 	"one-api/common"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -47,6 +48,72 @@ const (
 	LogTypeSystem
 	LogTypeError
 )
+
+// logListColumns 日志列表查询时 SELECT 的字段（排除大字段）
+var logListColumns = []string{
+	"id", "user_id", "created_at", "type", "username", "token_name",
+	"model_name", "prompt_tokens", "completion_tokens", "quota",
+	"use_time", "is_stream", "channel_id", "token_id", "group", "ip",
+}
+
+// channelNameCache 渠道名称内存缓存（1分钟刷新）
+type channelNameCache struct {
+	mu         sync.RWMutex
+	data       map[int]string
+	lastUpdate time.Time
+	ttl        time.Duration
+}
+
+var channelCache = &channelNameCache{
+	data: make(map[int]string),
+	ttl:  time.Minute,
+}
+
+func (c *channelNameCache) Get(channelId int) (string, bool) {
+	c.mu.RLock()
+	name, ok := c.data[channelId]
+	c.mu.RUnlock()
+	return name, ok
+}
+
+func (c *channelNameCache) Refresh() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if time.Since(c.lastUpdate) < c.ttl && len(c.data) > 0 {
+		return nil
+	}
+
+	var channels []struct {
+		Id   int    `gorm:"column:id"`
+		Name string `gorm:"column:name"`
+	}
+	if err := DB.Table("channels").Select("id, name").Find(&channels).Error; err != nil {
+		return err
+	}
+
+	newData := make(map[int]string, len(channels))
+	for _, ch := range channels {
+		newData[ch.Id] = ch.Name
+	}
+	c.data = newData
+	c.lastUpdate = time.Now()
+	return nil
+}
+
+func (c *channelNameCache) FillChannelNames(logs []*Log) {
+	if len(logs) == 0 {
+		return
+	}
+	_ = c.Refresh()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for i := range logs {
+		if logs[i].ChannelId != 0 {
+			logs[i].ChannelName = c.data[logs[i].ChannelId]
+		}
+	}
+}
 
 func formatUserLogs(logs []*Log) {
 	for i := range logs {
@@ -257,39 +324,12 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	if err != nil {
 		return nil, 0, err
 	}
-	err = tx.Order("logs.id desc").Limit(num).Offset(startIdx).Find(&logs).Error
+	err = tx.Select(logListColumns).Order("logs.id desc").Limit(num).Offset(startIdx).Find(&logs).Error
 	if err != nil {
 		return nil, 0, err
 	}
 
-	channelIdsMap := make(map[int]struct{})
-	channelMap := make(map[int]string)
-	for _, log := range logs {
-		if log.ChannelId != 0 {
-			channelIdsMap[log.ChannelId] = struct{}{}
-		}
-	}
-
-	channelIds := make([]int, 0, len(channelIdsMap))
-	for channelId := range channelIdsMap {
-		channelIds = append(channelIds, channelId)
-	}
-	if len(channelIds) > 0 {
-		var channels []struct {
-			Id   int    `gorm:"column:id"`
-			Name string `gorm:"column:name"`
-		}
-		if err = DB.Table("channels").Select("id, name").Where("id IN ?", channelIds).Find(&channels).Error; err != nil {
-			return logs, total, err
-		}
-		for _, channel := range channels {
-			channelMap[channel.Id] = channel.Name
-		}
-		for i := range logs {
-			logs[i].ChannelName = channelMap[logs[i].ChannelId]
-		}
-	}
-
+	channelCache.FillChannelNames(logs)
 	return logs, total, err
 }
 
@@ -320,13 +360,101 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	if err != nil {
 		return nil, 0, err
 	}
-	err = tx.Order("logs.id desc").Limit(num).Offset(startIdx).Find(&logs).Error
+	err = tx.Select(logListColumns).Order("logs.id desc").Limit(num).Offset(startIdx).Find(&logs).Error
 	if err != nil {
 		return nil, 0, err
 	}
 
 	formatUserLogs(logs)
 	return logs, total, err
+}
+
+func GetAllLogsCursor(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, cursor int, num int, channel int, group string) (logs []*Log, nextCursor int, err error) {
+	var tx *gorm.DB
+	if logType == LogTypeUnknown {
+		tx = LOG_DB
+	} else {
+		tx = LOG_DB.Where("logs.type = ?", logType)
+	}
+
+	if modelName != "" {
+		tx = tx.Where("logs.model_name like ?", modelName)
+	}
+	if username != "" {
+		tx = tx.Where("logs.username = ?", username)
+	}
+	if tokenName != "" {
+		tx = tx.Where("logs.token_name = ?", tokenName)
+	}
+	if startTimestamp != 0 {
+		tx = tx.Where("logs.created_at >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("logs.created_at <= ?", endTimestamp)
+	}
+	if channel != 0 {
+		tx = tx.Where("logs.channel_id = ?", channel)
+	}
+	if group != "" {
+		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	}
+	if cursor != 0 {
+		tx = tx.Where("logs.id < ?", cursor)
+	}
+	err = tx.Select(logListColumns).Order("logs.id desc").Limit(num + 1).Find(&logs).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	nextCursor = 0
+	if len(logs) > num {
+		nextCursor = logs[num].Id
+		logs = logs[:num]
+	}
+
+	channelCache.FillChannelNames(logs)
+	return logs, nextCursor, err
+}
+
+func GetUserLogsCursor(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, cursor int, num int, group string) (logs []*Log, nextCursor int, err error) {
+	var tx *gorm.DB
+	if logType == LogTypeUnknown {
+		tx = LOG_DB.Where("logs.user_id = ?", userId)
+	} else {
+		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
+	}
+
+	if modelName != "" {
+		tx = tx.Where("logs.model_name like ?", modelName)
+	}
+	if tokenName != "" {
+		tx = tx.Where("logs.token_name = ?", tokenName)
+	}
+	if startTimestamp != 0 {
+		tx = tx.Where("logs.created_at >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("logs.created_at <= ?", endTimestamp)
+	}
+	if group != "" {
+		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	}
+	if cursor != 0 {
+		tx = tx.Where("logs.id < ?", cursor)
+	}
+	err = tx.Select(logListColumns).Order("logs.id desc").Limit(num + 1).Find(&logs).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	nextCursor = 0
+	if len(logs) > num {
+		nextCursor = logs[num].Id
+		logs = logs[:num]
+	}
+
+	formatUserLogs(logs)
+	return logs, nextCursor, err
 }
 
 func SearchAllLogs(keyword string) (logs []*Log, err error) {

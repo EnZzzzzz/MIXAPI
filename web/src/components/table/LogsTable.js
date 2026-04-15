@@ -891,13 +891,12 @@ const LogsTable = () => {
   };
 
   const [logs, setLogs] = useState([]);
-  const [expandData, setExpandData] = useState({});
   const [showStat, setShowStat] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingStat, setLoadingStat] = useState(false);
   const [activePage, setActivePage] = useState(1);
-  const [logCount, setLogCount] = useState(ITEMS_PER_PAGE);
-  const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
+  const [logCount, setLogCount] = useState(20);
+  const [pageSize, setPageSize] = useState(20);
   const [logType, setLogType] = useState(0);
   const isAdminUser = isAdmin();
   let now = new Date();
@@ -1047,183 +1046,163 @@ const LogsTable = () => {
     }
   };
 
+  const renderExpandData = (record) => {
+    let expandDataLocal = [];
+    let other = getLogOther(record.other);
+    if (isAdminUser && (record.type === 0 || record.type === 2)) {
+      expandDataLocal.push({
+        key: t('渠道信息'),
+        value: `${record.channel} - ${record.channel_name || '[未知]'}`,
+      });
+    }
+    if (other?.ws || other?.audio) {
+      expandDataLocal.push({
+        key: t('语音输入'),
+        value: other.audio_input,
+      });
+      expandDataLocal.push({
+        key: t('语音输出'),
+        value: other.audio_output,
+      });
+      expandDataLocal.push({
+        key: t('文字输入'),
+        value: other.text_input,
+      });
+      expandDataLocal.push({
+        key: t('文字输出'),
+        value: other.text_output,
+      });
+    }
+    if (other?.cache_tokens > 0) {
+      expandDataLocal.push({
+        key: t('缓存 Tokens'),
+        value: other.cache_tokens,
+      });
+    }
+    if (other?.cache_creation_tokens > 0) {
+      expandDataLocal.push({
+        key: t('缓存创建 Tokens'),
+        value: other.cache_creation_tokens,
+      });
+    }
+    if (record.type === 2) {
+      expandDataLocal.push({
+        key: t('日志详情'),
+        value: other?.claude
+          ? renderClaudeLogContent(
+            other?.model_ratio,
+            other.completion_ratio,
+            other.model_price,
+            other.group_ratio,
+            other?.user_group_ratio,
+            other.cache_ratio || 1.0,
+            other.cache_creation_ratio || 1.0,
+          )
+          : renderLogContent(
+            other?.model_ratio,
+            other.completion_ratio,
+            other.model_price,
+            other.group_ratio,
+            other?.user_group_ratio,
+            false,
+            1.0,
+            other.web_search || false,
+            other.web_search_call_count || 0,
+            other.file_search || false,
+            other.file_search_call_count || 0,
+          ),
+      });
+    }
+    if (record.type === 2) {
+      let modelMapped =
+        other?.is_model_mapped &&
+        other?.upstream_model_name &&
+        other?.upstream_model_name !== '';
+      if (modelMapped) {
+        expandDataLocal.push({
+          key: t('请求并计费模型'),
+          value: record.model_name,
+        });
+        expandDataLocal.push({
+          key: t('实际模型'),
+          value: other.upstream_model_name,
+        });
+      }
+      let content = '';
+      if (other?.ws || other?.audio) {
+        content = renderAudioModelPrice(
+          other?.text_input,
+          other?.text_output,
+          other?.model_ratio,
+          other?.model_price,
+          other?.completion_ratio,
+          other?.audio_input,
+          other?.audio_output,
+          other?.audio_ratio,
+          other?.audio_completion_ratio,
+          other?.group_ratio,
+          other?.user_group_ratio,
+          other?.cache_tokens || 0,
+          other?.cache_ratio || 1.0,
+        );
+      } else if (other?.claude) {
+        content = renderClaudeModelPrice(
+          record.prompt_tokens,
+          record.completion_tokens,
+          other.model_ratio,
+          other.model_price,
+          other.completion_ratio,
+          other.group_ratio,
+          other?.user_group_ratio,
+          other.cache_tokens || 0,
+          other.cache_ratio || 1.0,
+          other.cache_creation_tokens || 0,
+          other.cache_creation_ratio || 1.0,
+        );
+      } else {
+        content = renderModelPrice(
+          record.prompt_tokens,
+          record.completion_tokens,
+          other?.model_ratio,
+          other?.model_price,
+          other?.completion_ratio,
+          other?.group_ratio,
+          other?.user_group_ratio,
+          other?.cache_tokens || 0,
+          other?.cache_ratio || 1.0,
+          other?.image || false,
+          other?.image_ratio || 0,
+          other?.image_output || 0,
+          other?.web_search || false,
+          other.web_search_call_count || 0,
+          other?.web_search_price || 0,
+          other?.file_search || false,
+          other.file_search_call_count || 0,
+          other?.file_search_price || 0,
+          other?.audio_input_seperate_price || false,
+          other?.audio_input_token_count || 0,
+          other?.audio_input_price || 0,
+        );
+      }
+      expandDataLocal.push({
+        key: t('计费过程'),
+        value: content,
+      });
+      if (other?.reasoning_effort) {
+        expandDataLocal.push({
+          key: t('Reasoning Effort'),
+          value: other.reasoning_effort,
+        });
+      }
+    }
+    return expandDataLocal;
+  };
+
   const setLogsFormat = (logs) => {
-    let expandDatesLocal = {};
     for (let i = 0; i < logs.length; i++) {
       logs[i].timestamp2string = timestamp2string(logs[i].created_at);
       logs[i].key = logs[i].id;
-      let other = getLogOther(logs[i].other);
-      let expandDataLocal = [];
-      if (isAdmin()) {
-        // let content = '渠道：' + logs[i].channel;
-        // if (other.admin_info !== undefined) {
-        //   if (
-        //     other.admin_info.use_channel !== null &&
-        //     other.admin_info.use_channel !== undefined &&
-        //     other.admin_info.use_channel !== ''
-        //   ) {
-        //     // channel id array
-        //     let useChannel = other.admin_info.use_channel;
-        //     let useChannelStr = useChannel.join('->');
-        //     content = `渠道：${useChannelStr}`;
-        //   }
-        // }
-        // expandDataLocal.push({
-        //   key: '渠道重试',
-        //   value: content,
-        // })
-      }
-      if (isAdminUser && (logs[i].type === 0 || logs[i].type === 2)) {
-        expandDataLocal.push({
-          key: t('渠道信息'),
-          value: `${logs[i].channel} - ${logs[i].channel_name || '[未知]'}`,
-        });
-      }
-      // 不再展开行显示用户输入内容和模型输出内容
-      if (other?.ws || other?.audio) {
-        expandDataLocal.push({
-          key: t('语音输入'),
-          value: other.audio_input,
-        });
-        expandDataLocal.push({
-          key: t('语音输出'),
-          value: other.audio_output,
-        });
-        expandDataLocal.push({
-          key: t('文字输入'),
-          value: other.text_input,
-        });
-        expandDataLocal.push({
-          key: t('文字输出'),
-          value: other.text_output,
-        });
-      }
-      if (other?.cache_tokens > 0) {
-        expandDataLocal.push({
-          key: t('缓存 Tokens'),
-          value: other.cache_tokens,
-        });
-      }
-      if (other?.cache_creation_tokens > 0) {
-        expandDataLocal.push({
-          key: t('缓存创建 Tokens'),
-          value: other.cache_creation_tokens,
-        });
-      }
-      if (logs[i].type === 2) {
-        expandDataLocal.push({
-          key: t('日志详情'),
-          value: other?.claude
-            ? renderClaudeLogContent(
-              other?.model_ratio,
-              other.completion_ratio,
-              other.model_price,
-              other.group_ratio,
-              other?.user_group_ratio,
-              other.cache_ratio || 1.0,
-              other.cache_creation_ratio || 1.0,
-            )
-            : renderLogContent(
-              other?.model_ratio,
-              other.completion_ratio,
-              other.model_price,
-              other.group_ratio,
-              other?.user_group_ratio,
-              false,
-              1.0,
-              other.web_search || false,
-              other.web_search_call_count || 0,
-              other.file_search || false,
-              other.file_search_call_count || 0,
-            ),
-        });
-      }
-      if (logs[i].type === 2) {
-        let modelMapped =
-          other?.is_model_mapped &&
-          other?.upstream_model_name &&
-          other?.upstream_model_name !== '';
-        if (modelMapped) {
-          expandDataLocal.push({
-            key: t('请求并计费模型'),
-            value: logs[i].model_name,
-          });
-          expandDataLocal.push({
-            key: t('实际模型'),
-            value: other.upstream_model_name,
-          });
-        }
-        let content = '';
-        if (other?.ws || other?.audio) {
-          content = renderAudioModelPrice(
-            other?.text_input,
-            other?.text_output,
-            other?.model_ratio,
-            other?.model_price,
-            other?.completion_ratio,
-            other?.audio_input,
-            other?.audio_output,
-            other?.audio_ratio,
-            other?.audio_completion_ratio,
-            other?.group_ratio,
-            other?.user_group_ratio,
-            other?.cache_tokens || 0,
-            other?.cache_ratio || 1.0,
-          );
-        } else if (other?.claude) {
-          content = renderClaudeModelPrice(
-            logs[i].prompt_tokens,
-            logs[i].completion_tokens,
-            other.model_ratio,
-            other.model_price,
-            other.completion_ratio,
-            other.group_ratio,
-            other?.user_group_ratio,
-            other.cache_tokens || 0,
-            other.cache_ratio || 1.0,
-            other.cache_creation_tokens || 0,
-            other.cache_creation_ratio || 1.0,
-          );
-        } else {
-          content = renderModelPrice(
-            logs[i].prompt_tokens,
-            logs[i].completion_tokens,
-            other?.model_ratio,
-            other?.model_price,
-            other?.completion_ratio,
-            other?.group_ratio,
-            other?.user_group_ratio,
-            other?.cache_tokens || 0,
-            other?.cache_ratio || 1.0,
-            other?.image || false,
-            other?.image_ratio || 0,
-            other?.image_output || 0,
-            other?.web_search || false,
-            other?.web_search_call_count || 0,
-            other?.web_search_price || 0,
-            other?.file_search || false,
-            other?.file_search_call_count || 0,
-            other?.file_search_price || 0,
-            other?.audio_input_seperate_price || false,
-            other?.audio_input_token_count || 0,
-            other?.audio_input_price || 0,
-          );
-        }
-        expandDataLocal.push({
-          key: t('计费过程'),
-          value: content,
-        });
-        if (other?.reasoning_effort) {
-          expandDataLocal.push({
-            key: t('Reasoning Effort'),
-            value: other.reasoning_effort,
-          });
-        }
-      }
-      expandDatesLocal[logs[i].key] = expandDataLocal;
     }
-
-    setExpandData(expandDatesLocal);
     setLogs(logs);
   };
 
@@ -1306,7 +1285,7 @@ const LogsTable = () => {
 
   useEffect(() => {
     const localPageSize =
-      parseInt(localStorage.getItem('page-size')) || ITEMS_PER_PAGE;
+      parseInt(localStorage.getItem('page-size')) || 20;
     setPageSize(localPageSize);
     loadLogs(activePage, localPageSize)
       .then()
@@ -1316,21 +1295,23 @@ const LogsTable = () => {
   }, []);
 
   // 当 formApi 可用时，初始化统计
-  useEffect(() => {
-    if (formApi) {
-      handleEyeClick();
-    }
-  }, [formApi]);
+  // useEffect(() => {
+  //   if (formApi) {
+  //     handleEyeClick();
+  //   }
+  // }, [formApi]);
 
   const expandRowRender = (record, index) => {
-    return <Descriptions data={expandData[record.key]} />;
+    const data = renderExpandData(record);
+    if (!data || data.length === 0) {
+      return null;
+    }
+    return <Descriptions data={data} />;
   };
 
   // 检查是否有任何记录有展开内容
   const hasExpandableRows = () => {
-    return logs.some(
-      (log) => expandData[log.key] && expandData[log.key].length > 0,
-    );
+    return logs.length > 0;
   };
 
   const [compactMode, setCompactMode] = useTableCompactMode('logs');
@@ -1554,8 +1535,7 @@ const LogsTable = () => {
           {...(hasExpandableRows() && {
             expandedRowRender: expandRowRender,
             expandRowByClick: true,
-            rowExpandable: (record) =>
-              expandData[record.key] && expandData[record.key].length > 0,
+            rowExpandable: () => true,
           })}
           dataSource={logs}
           rowKey='key'
