@@ -191,6 +191,21 @@ type MessageImageUrl struct {
 	MimeType string
 }
 
+func (m *MessageImageUrl) MarshalJSON() ([]byte, error) {
+	detail := m.Detail
+	if detail == "" {
+		detail = "auto"
+	}
+	type Alias MessageImageUrl
+	return json.Marshal(&struct {
+		*Alias
+		Detail string `json:"detail"`
+	}{
+		Alias:  (*Alias)(m),
+		Detail: detail,
+	})
+}
+
 func (m *MessageImageUrl) IsRemoteImage() bool {
 	return strings.HasPrefix(m.Url, "http")
 }
