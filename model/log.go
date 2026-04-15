@@ -49,11 +49,12 @@ const (
 	LogTypeError
 )
 
-// logListColumns 日志列表查询时 SELECT 的字段（排除大字段）
+// logListColumns 日志列表查询时 SELECT 的字段
 var logListColumns = []string{
 	"id", "user_id", "created_at", "type", "username", "token_name",
 	"model_name", "prompt_tokens", "completion_tokens", "quota",
 	"use_time", "is_stream", "channel_id", "token_id", "group", "ip",
+	"user_input", "response_body",
 }
 
 // channelNameCache 渠道名称内存缓存（1分钟刷新）
