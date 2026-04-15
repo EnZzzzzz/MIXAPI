@@ -33,9 +33,16 @@ type MigrationStats struct {
 
 func main() {
 	config := Config{
-		SQLitePath: getEnv("SQLITE_PATH", "./one-api.db"),
-		MySQLDSN:   getEnv("MYSQL_DSN", "root:123456@tcp(localhost:3306)/mixapi?parseTime=true&multiStatements=true"),
+		SQLitePath: getEnv("SQLITE_PATH", ""),
+		MySQLDSN:   getEnv("MYSQL_DSN", ""),
 		BatchSize:  1000,
+	}
+
+	if config.SQLitePath == "" {
+		log.Fatalf("SQLITE_PATH environment variable is required")
+	}
+	if config.MySQLDSN == "" {
+		log.Fatalf("MYSQL_DSN environment variable is required")
 	}
 
 	fmt.Println("========================================")
