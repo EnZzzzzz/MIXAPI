@@ -54,7 +54,7 @@ var logListColumns = []string{
 	"id", "user_id", "created_at", "type", "username", "token_name",
 	"model_name", "prompt_tokens", "completion_tokens", "quota",
 	"use_time", "is_stream", "channel_id", "token_id", "group", "ip",
-	"user_input", "response_body",
+	"user_input", "response_body", "other",
 }
 
 // channelNameCache 渠道名称内存缓存（1分钟刷新）
