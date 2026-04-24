@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   Button,
   Col,
@@ -10,7 +10,16 @@ import {
   Modal,
   Space,
   Typography,
+  Table,
+  Tag,
+  Tooltip,
+  Popconfirm,
 } from '@douyinfe/semi-ui';
+import {
+  Download,
+  Trash2,
+  Loader,
+} from 'lucide-react';
 import dayjs from 'dayjs';
 import { useTranslation } from 'react-i18next';
 import {
@@ -19,6 +28,7 @@ import {
   showError,
   showSuccess,
   showWarning,
+  timestamp2string,
 } from '../../../helpers';
 
 const { Text } = Typography;
@@ -47,6 +57,65 @@ export default function SettingsLog(props) {
   const exportFormRef = useRef();
   const cleanFormRef = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
+
+  // Export task list states
+  const [exportTasks, setExportTasks] = useState([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
+  const pollTimerRef = useRef(null);
+
+  const statusMap = {
+    pending: { label: t('待处理'), color: 'grey' },
+    processing: { label: t('处理中'), color: 'blue' },
+    success: { label: t('已完成'), color: 'green' },
+    failed: { label: t('失败'), color: 'red' },
+  };
+
+  const fetchExportTasks = useCallback(async () => {
+    try {
+      setLoadingTasks(true);
+      const res = await API.get('/api/log/export/tasks?page=1&size=10');
+      const { success, data } = res.data;
+      if (success && data) {
+        setExportTasks(data.items || []);
+      }
+    } catch (error) {
+      console.error('获取导出任务列表失败', error);
+    } finally {
+      setLoadingTasks(false);
+    }
+  }, []);
+
+  const startPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+    }
+    pollTimerRef.current = setInterval(() => {
+      fetchExportTasks();
+    }, 5000);
+  }, [fetchExportTasks]);
+
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchExportTasks();
+  }, [fetchExportTasks]);
+
+  useEffect(() => {
+    const hasActiveTasks = exportTasks.some(
+      (task) => task.status === 'pending' || task.status === 'processing'
+    );
+    if (hasActiveTasks) {
+      startPolling();
+    } else {
+      stopPolling();
+    }
+    return () => stopPolling();
+  }, [exportTasks, startPolling, stopPolling]);
 
   function onSubmit() {
     const updateArray = compareObjects(inputs, inputsRow).filter(
@@ -100,47 +169,171 @@ export default function SettingsLog(props) {
         throw new Error(t('开始时间必须早于结束时间'));
       }
 
-      const params = new URLSearchParams({
+      const payload = {
         start_timestamp: startTimestamp,
         end_timestamp: endTimestamp,
         format: exportInputs.format,
-      });
+        username: exportInputs.username || '',
+        model_name: exportInputs.modelName || '',
+      };
 
-      if (exportInputs.username) {
-        params.append('username', exportInputs.username);
+      const res = await API.post('/api/log/export', payload);
+      const { success, message } = res.data;
+      if (success) {
+        showSuccess(t('导出任务已创建，请在下方列表中查看'));
+        await fetchExportTasks();
+      } else {
+        throw new Error(message || t('导出任务创建失败'));
       }
-      if (exportInputs.modelName) {
-        params.append('model_name', exportInputs.modelName);
-      }
-
-      const response = await API.get(`/api/log/export?${params.toString()}`, {
-        responseType: 'blob',
-      });
-
-      // 创建下载链接
-      const blob = new Blob([response.data]);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-
-      // 生成文件名
-      const startStr = dayjs(exportInputs.startTimestamp).format('YYYYMMDD');
-      const endStr = dayjs(exportInputs.endTimestamp).format('YYYYMMDD');
-      const extension = exportInputs.format === 'csv' ? 'csv' : 'json';
-      link.download = `logs_${startStr}_${endStr}.${extension}`;
-
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      showSuccess(t('日志导出成功'));
     } catch (error) {
       showError(error.message || t('日志导出失败'));
     } finally {
       setLoadingExportLog(false);
     }
   }
+
+  async function onDownloadExportTask(task) {
+    try {
+      const response = await API.get(`/api/log/export/${task.id}/download`, {
+        responseType: 'blob',
+      });
+
+      const blob = new Blob([response.data]);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+
+      const startStr = task.start_time ? timestamp2string(task.start_time).replace(/[-: ]/g, '').slice(0, 8) : '';
+      const endStr = task.end_time ? timestamp2string(task.end_time).replace(/[-: ]/g, '').slice(0, 8) : '';
+      const extension = task.format === 'csv' ? 'csv' : 'json';
+      link.download = `logs_${startStr}_${endStr}.${extension}`;
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      showError(error.message || t('文件下载失败'));
+    }
+  }
+
+  async function onDeleteExportTask(taskId) {
+    try {
+      const res = await API.delete(`/api/log/export/${taskId}`);
+      const { success, message } = res.data;
+      if (success) {
+        showSuccess(t('任务已删除'));
+        await fetchExportTasks();
+      } else {
+        throw new Error(message || t('删除失败'));
+      }
+    } catch (error) {
+      showError(error.message || t('删除失败'));
+    }
+  }
+
+  function formatFileSize(bytes) {
+    if (!bytes && bytes !== 0) return '-';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
+  const taskColumns = [
+    {
+      title: t('创建时间'),
+      dataIndex: 'created_at',
+      key: 'created_at',
+      width: 180,
+      render: (createdAt) => (
+        <Text>{createdAt ? timestamp2string(createdAt) : '-'}</Text>
+      ),
+    },
+    {
+      title: t('时间范围'),
+      key: 'time_range',
+      width: 280,
+      render: (text, record) => (
+        <Text>
+          {record.start_time ? timestamp2string(record.start_time) : '-'} ~ {record.end_time ? timestamp2string(record.end_time) : '-'}
+        </Text>
+      ),
+    },
+    {
+      title: t('格式'),
+      dataIndex: 'format',
+      key: 'format',
+      width: 80,
+      render: (format) => <Tag>{format?.toUpperCase?.() || format}</Tag>,
+    },
+    {
+      title: t('状态'),
+      dataIndex: 'status',
+      key: 'status',
+      width: 120,
+      render: (status, record) => {
+        const config = statusMap[status] || { label: status, color: 'grey' };
+        const tag = (
+          <Tag color={config.color}>
+            {status === 'processing' && (
+              <Loader size={12} style={{ marginRight: 4, animation: 'spin 1s linear infinite' }} />
+            )}
+            {config.label}
+          </Tag>
+        );
+        if (status === 'failed' && record.error_msg) {
+          return (
+            <Tooltip content={record.error_msg} showArrow position='topLeft'>
+              {tag}
+            </Tooltip>
+          );
+        }
+        return tag;
+      },
+    },
+    {
+      title: t('文件大小'),
+      dataIndex: 'file_size',
+      key: 'file_size',
+      width: 120,
+      render: (fileSize) => <Text>{formatFileSize(fileSize)}</Text>,
+    },
+    {
+      title: t('操作'),
+      key: 'action',
+      width: 150,
+      render: (text, record) => (
+        <Space>
+          {record.status === 'success' && (
+            <Button
+              icon={<Download size={14} />}
+              theme='light'
+              type='tertiary'
+              size='small'
+              onClick={() => onDownloadExportTask(record)}
+            >
+              {t('下载')}
+            </Button>
+          )}
+          <Popconfirm
+            title={t('确认删除')}
+            content={t('确定要删除此导出任务吗？')}
+            onConfirm={() => onDeleteExportTask(record.id)}
+            position='top'
+          >
+            <Button
+              icon={<Trash2 size={14} />}
+              type='danger'
+              theme='light'
+              size='small'
+            >
+              {t('删除')}
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
 
   async function onCleanHistoryLog() {
     const { startTimestamp, endTimestamp, cleanMode } = cleanInputs;
@@ -363,6 +556,23 @@ export default function SettingsLog(props) {
           </Form.Section>
         </Form>
       </Spin>
+
+      {/* 导出任务列表 */}
+      <Form.Section text={t('导出任务列表')}>
+        <Table
+          columns={taskColumns}
+          dataSource={exportTasks}
+          rowKey='id'
+          loading={loadingTasks}
+          pagination={false}
+          size='middle'
+          empty={
+            <div style={{ padding: 30, textAlign: 'center' }}>
+              <Text type='secondary'>{t('暂无导出任务')}</Text>
+            </div>
+          }
+        />
+      </Form.Section>
 
       {/* 历史日志清理区域 */}
       <Spin spinning={loadingCleanHistoryLog}>

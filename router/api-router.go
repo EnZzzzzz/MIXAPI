@@ -156,7 +156,10 @@ func SetApiRouter(router *gin.Engine) {
 		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
 		logRoute.GET("/self/cursor", middleware.UserAuth(), controller.GetUserLogsCursor)
 		logRoute.GET("/self/search", middleware.UserAuth(), controller.SearchUserLogs)
-		logRoute.GET("/export", middleware.AdminAuth(), controller.ExportLogs)
+		logRoute.POST("/export", middleware.AdminAuth(), controller.CreateExportTask)
+		logRoute.GET("/export/tasks", middleware.AdminAuth(), controller.GetExportTasks)
+		logRoute.GET("/export/:id/download", middleware.AdminAuth(), controller.DownloadExportFile)
+		logRoute.DELETE("/export/:id", middleware.AdminAuth(), controller.DeleteExportTask)
 
 		dataRoute := apiRouter.Group("/data")
 		dataRoute.GET("/", middleware.AdminAuth(), controller.GetAllQuotaDates)

@@ -600,27 +600,6 @@ func DeleteLogsByTimeRange(ctx context.Context, startTimestamp int64, endTimesta
 	return total, nil
 }
 
-func ExportLogs(startTimestamp int64, endTimestamp int64, username string, modelName string) ([]*Log, error) {
-	var logs []*Log
-	tx := LOG_DB
-
-	if startTimestamp > 0 {
-		tx = tx.Where("created_at >= ?", startTimestamp)
-	}
-	if endTimestamp > 0 {
-		tx = tx.Where("created_at <= ?", endTimestamp)
-	}
-	if username != "" {
-		tx = tx.Where("username = ?", username)
-	}
-	if modelName != "" {
-		tx = tx.Where("model_name like ?", modelName)
-	}
-
-	err := tx.Order("id desc").Find(&logs).Error
-	return logs, err
-}
-
 // CleanLogBodiesOnly 根据时间范围清理日志的 user_input 和 response_body 字段
 // 只清理这两个字段的内容，保留其他日志元数据
 func CleanLogBodiesOnly(ctx context.Context, startTimestamp int64, endTimestamp int64, limit int) (int64, error) {

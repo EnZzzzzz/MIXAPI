@@ -1,13 +1,13 @@
 package controller
 
 import (
-	"bytes"
-	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"one-api/common"
 	"one-api/model"
+	"one-api/service"
+	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -315,25 +315,32 @@ func DeleteHistoryLogs(c *gin.Context) {
 	return
 }
 
-func ExportLogs(c *gin.Context) {
-	// 只有管理员可以导出
+
+func CreateExportTask(c *gin.Context) {
+	userId := c.GetInt("id")
 	userRole := c.GetInt("role")
 	if userRole < common.RoleAdminUser {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
-			"message": "only admin can export logs",
+			"message": "only admin can create export task",
 		})
 		return
 	}
 
-	// 解析参数
-	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
-	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
-	format := c.DefaultQuery("format", "json")
-	username := c.Query("username")
-	modelName := c.Query("model_name")
+	var req struct {
+		StartTimestamp int64  `json:"start_timestamp"`
+		EndTimestamp   int64  `json:"end_timestamp"`
+		Format         string `json:"format"`
+		Username       string `json:"username"`
+		ModelName      string `json:"model_name"`
+	}
 
-	if startTimestamp == 0 || endTimestamp == 0 {
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	if req.StartTimestamp == 0 || req.EndTimestamp == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "start_timestamp and end_timestamp are required",
@@ -341,63 +348,128 @@ func ExportLogs(c *gin.Context) {
 		return
 	}
 
-	// 查询数据
-	logs, err := model.ExportLogs(startTimestamp, endTimestamp, username, modelName)
+	task, err := service.CreateExportTask(userId, req.StartTimestamp, req.EndTimestamp, req.Username, req.ModelName, req.Format)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 
-	// 生成文件名
-	startStr := time.Unix(startTimestamp, 0).Format("20060102")
-	endStr := time.Unix(endTimestamp, 0).Format("20060102")
-	filename := fmt.Sprintf("logs_%s_%s.%s", startStr, endStr, format)
-
-	// 根据格式导出
-	var data []byte
-	if format == "csv" {
-		data, err = convertLogsToCSV(logs)
-	} else {
-		data, err = json.MarshalIndent(logs, "", "  ")
-	}
-
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-
-	c.Header("Content-Type", "application/octet-stream")
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
-	c.Data(http.StatusOK, "application/octet-stream", data)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"id":     task.ID,
+			"status": task.Status,
+		},
+	})
 }
 
-func convertLogsToCSV(logs []*model.Log) ([]byte, error) {
-	var buf bytes.Buffer
-	writer := csv.NewWriter(&buf)
-
-	// 写入表头
-	headers := []string{"id", "user_id", "created_at", "type", "username", "model_name",
-		"prompt_tokens", "completion_tokens", "quota", "user_input", "response_body"}
-	writer.Write(headers)
-
-	// 写入数据
-	for _, log := range logs {
-		record := []string{
-			strconv.Itoa(log.Id),
-			strconv.Itoa(log.UserId),
-			strconv.FormatInt(log.CreatedAt, 10),
-			strconv.Itoa(log.Type),
-			log.Username,
-			log.ModelName,
-			strconv.Itoa(log.PromptTokens),
-			strconv.Itoa(log.CompletionTokens),
-			strconv.Itoa(log.Quota),
-			log.UserInput,
-			log.ResponseBody,
-		}
-		writer.Write(record)
+func GetExportTasks(c *gin.Context) {
+	userId := c.GetInt("id")
+	userRole := c.GetInt("role")
+	if userRole < common.RoleAdminUser {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "only admin can get export tasks",
+		})
+		return
 	}
 
-	writer.Flush()
-	return buf.Bytes(), writer.Error()
+	pageInfo := common.GetPageQuery(c)
+	total, err := model.CountLogExportTasksByUserId(userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	tasks, err := model.GetLogExportTasksByUserId(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(tasks)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func DownloadExportFile(c *gin.Context) {
+	userId := c.GetInt("id")
+	userRole := c.GetInt("role")
+
+	idStr := c.Param("id")
+	taskID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "invalid task id",
+		})
+		return
+	}
+
+	task, err := model.GetLogExportTaskByID(taskID)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	if task.UserId != userId && userRole < common.RoleAdminUser {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "no permission to download this file",
+		})
+		return
+	}
+
+	if task.Status != "success" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "task is not completed",
+		})
+		return
+	}
+
+	c.FileAttachment(task.FilePath, filepath.Base(task.FilePath))
+}
+
+func DeleteExportTask(c *gin.Context) {
+	userId := c.GetInt("id")
+	userRole := c.GetInt("role")
+
+	idStr := c.Param("id")
+	taskID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "invalid task id",
+		})
+		return
+	}
+
+	task, err := model.GetLogExportTaskByID(taskID)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	if task.UserId != userId && userRole < common.RoleAdminUser {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "no permission to delete this task",
+		})
+		return
+	}
+
+	if task.FilePath != "" {
+		_ = os.Remove(task.FilePath)
+	}
+
+	if err := model.DeleteLogExportTaskByID(taskID); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+	})
 }
