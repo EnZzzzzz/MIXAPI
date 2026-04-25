@@ -27,14 +27,38 @@ type ModelRequest struct {
 
 func Distribute() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		allowIpsMap := common.GetContextKeyStringMap(c, constant.ContextKeyTokenAllowIps)
-		if len(allowIpsMap) != 0 {
-			clientIp := c.ClientIP()
-			if _, ok := allowIpsMap[clientIp]; !ok {
-				abortWithOpenAiMessage(c, http.StatusForbidden, "您的 IP 不在令牌允许访问的列表中")
+		clientIp := c.ClientIP()
+
+		// a) 全局黑名单拦截
+		if common.BlockedIps != "" {
+			blockedIpsMap := parseBlockedIps(common.BlockedIps)
+			if _, ok := blockedIpsMap[clientIp]; ok {
+				abortWithOpenAiMessage(c, http.StatusForbidden, "请求被拒绝，请稍后重试或联系管理员")
 				return
 			}
 		}
+
+		// b) Token 黑名单拦截
+		blockIpsMap := common.GetContextKeyStringMap(c, constant.ContextKeyTokenBlockIps)
+		if len(blockIpsMap) != 0 {
+			if _, ok := blockIpsMap[clientIp]; ok {
+				abortWithOpenAiMessage(c, http.StatusForbidden, "请求被拒绝，请稍后重试或联系管理员")
+				return
+			}
+		}
+
+		// c) 白名单开关改造
+		allowIpsEnabled := common.GetContextKeyBool(c, constant.ContextKeyTokenAllowIpsEnabled)
+		if allowIpsEnabled {
+			allowIpsMap := common.GetContextKeyStringMap(c, constant.ContextKeyTokenAllowIps)
+			if len(allowIpsMap) != 0 {
+				if _, ok := allowIpsMap[clientIp]; !ok {
+					abortWithOpenAiMessage(c, http.StatusForbidden, "请求被拒绝，请稍后重试或联系管理员")
+					return
+				}
+			}
+		}
+
 		var channel *model.Channel
 		channelId, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId)
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
@@ -47,13 +71,13 @@ func Distribute() func(c *gin.Context) {
 		if tokenGroup != "" {
 			// check common.UserUsableGroups[userGroup]
 			if _, ok := setting.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
-				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("令牌分组 %s 已被禁用", tokenGroup))
+				abortWithOpenAiMessage(c, http.StatusForbidden, "请求被拒绝，请稍后重试或联系管理员")
 				return
 			}
 			// check group in common.GroupRatio
 			if !ratio_setting.ContainsGroupRatio(tokenGroup) {
 				if tokenGroup != "auto" {
-					abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("分组 %s 已被弃用", tokenGroup))
+					abortWithOpenAiMessage(c, http.StatusForbidden, "请求被拒绝，请稍后重试或联系管理员")
 					return
 				}
 			}
@@ -89,12 +113,12 @@ func Distribute() func(c *gin.Context) {
 				}
 				if tokenModelLimit != nil {
 					if _, ok := tokenModelLimit[modelRequest.Model]; !ok {
-						abortWithOpenAiMessage(c, http.StatusForbidden, "该令牌无权访问模型 "+modelRequest.Model)
+						abortWithOpenAiMessage(c, http.StatusForbidden, "请求被拒绝，请稍后重试或联系管理员")
 						return
 					}
 				} else {
 					// token model limit is empty, all models are not allowed
-					abortWithOpenAiMessage(c, http.StatusForbidden, "该令牌无权访问任何模型")
+					abortWithOpenAiMessage(c, http.StatusForbidden, "请求被拒绝，请稍后重试或联系管理员")
 					return
 				}
 			}
@@ -248,6 +272,32 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		common.SetContextKey(c, constant.ContextKeyTokenGroup, modelRequest.Group)
 	}
 	return &modelRequest, shouldSelectChannel, nil
+}
+
+func parseBlockedIps(blockedIps string) map[string]bool {
+	blockedIpsMap := make(map[string]bool)
+	cleanIps := strings.ReplaceAll(blockedIps, " ", "")
+	if cleanIps == "" {
+		return blockedIpsMap
+	}
+	separators := []string{"\n", ",", ";"}
+	for _, sep := range separators {
+		if strings.Contains(cleanIps, sep) {
+			ips := strings.Split(cleanIps, sep)
+			for _, ip := range ips {
+				ip = strings.TrimSpace(ip)
+				if ip != "" && common.IsIP(ip) {
+					blockedIpsMap[ip] = true
+				}
+			}
+			return blockedIpsMap
+		}
+	}
+	// 如果没有分隔符，整体尝试作为单个 IP
+	if common.IsIP(cleanIps) {
+		blockedIpsMap[cleanIps] = true
+	}
+	return blockedIpsMap
 }
 
 func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, modelName string) *types.NewAPIError {

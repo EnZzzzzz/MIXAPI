@@ -5,6 +5,7 @@ import (
 	"one-api/common"
 	"one-api/model"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -82,6 +83,61 @@ func GetTokenStatus(c *gin.Context) {
 	})
 }
 
+func GetTokenIpLogs(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	userId := c.GetInt("id")
+	token, err := model.GetTokenById(id)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// 权限检查：只能查自己的 token，管理员除外
+	if token.UserId != userId && !model.IsAdmin(userId) {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "无权访问该令牌",
+		})
+		return
+	}
+
+	// 默认查询最近 24h
+	hours := 24
+	hoursStr := c.Query("hours")
+	if hoursStr != "" {
+		if h, err := strconv.Atoi(hoursStr); err == nil && h > 0 {
+			hours = h
+		}
+	}
+	sinceTime := time.Now().Add(-time.Duration(hours) * time.Hour).Unix()
+
+	logs, err := model.GetTokenIpLogs(id, sinceTime, 100)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    logs,
+	})
+}
+
 func GetTokenTags(c *gin.Context) {
 	tags, err := model.GetPaginatedTags(0, 1000) // 获取所有标签
 	if err != nil {
@@ -140,6 +196,8 @@ func AddToken(c *gin.Context) {
 		ModelLimitsEnabled: token.ModelLimitsEnabled,
 		ModelLimits:        token.ModelLimits,
 		AllowIps:           token.AllowIps,
+		AllowIpsEnabled:    token.AllowIpsEnabled,
+		BlockIps:           token.BlockIps,
 		Group:              token.Group,
 		RateLimitPerMinute: token.RateLimitPerMinute,
 		RateLimitPerDay:    token.RateLimitPerDay,
@@ -222,6 +280,8 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.ModelLimitsEnabled = token.ModelLimitsEnabled
 		cleanToken.ModelLimits = token.ModelLimits
 		cleanToken.AllowIps = token.AllowIps
+		cleanToken.AllowIpsEnabled = token.AllowIpsEnabled
+		cleanToken.BlockIps = token.BlockIps
 		cleanToken.Group = token.Group
 		cleanToken.RateLimitPerMinute = token.RateLimitPerMinute
 		cleanToken.RateLimitPerDay = token.RateLimitPerDay

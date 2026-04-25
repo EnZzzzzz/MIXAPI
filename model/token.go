@@ -26,6 +26,10 @@ type Token struct {
 	ModelLimitsEnabled bool           `json:"model_limits_enabled"`
 	ModelLimits        string         `json:"model_limits" gorm:"type:varchar(1024);default:''"`
 	AllowIps           *string        `json:"allow_ips" gorm:"default:''"`
+	AllowIpsEnabled    bool           `json:"allow_ips_enabled" gorm:"default:false"`
+	BlockIps           *string        `json:"block_ips" gorm:"default:''"`
+	RiskLevel          int            `json:"risk_level" gorm:"default:0"`
+	RiskReason         string         `json:"risk_reason" gorm:"default:''"`
 	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
 	Group              string         `json:"group" gorm:"default:''"`
 	DailyUsageCount    int            `json:"daily_usage_count" gorm:"default:0"`     // 今日使用次数
@@ -41,6 +45,26 @@ type Token struct {
 
 func (token *Token) Clean() {
 	token.Key = ""
+}
+
+func (token *Token) GetBlockIpsMap() map[string]any {
+	blockIpsMap := make(map[string]any)
+	if token.BlockIps == nil {
+		return blockIpsMap
+	}
+	cleanIps := strings.ReplaceAll(*token.BlockIps, " ", "")
+	if cleanIps == "" {
+		return blockIpsMap
+	}
+	ips := strings.Split(cleanIps, "\n")
+	for _, ip := range ips {
+		ip = strings.TrimSpace(ip)
+		ip = strings.ReplaceAll(ip, ",", "")
+		if common.IsIP(ip) {
+			blockIpsMap[ip] = true
+		}
+	}
+	return blockIpsMap
 }
 
 func (token *Token) GetIpLimitsMap() map[string]any {
@@ -208,7 +232,7 @@ func (token *Token) Update() (err error) {
 		}
 	}()
 	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "group", "daily_usage_count", "total_usage_count", "last_usage_date",
+		"model_limits_enabled", "model_limits", "allow_ips", "allow_ips_enabled", "block_ips", "risk_level", "risk_reason", "group", "daily_usage_count", "total_usage_count", "last_usage_date",
 		"rate_limit_per_minute", "rate_limit_per_day", "last_rate_limit_reset", "channel_tag", "total_usage_limit").Updates(token).Error
 	return err
 }

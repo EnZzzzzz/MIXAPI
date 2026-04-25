@@ -270,10 +270,26 @@ const TokensTable = () => {
       },
     },
     {
+      title: t('风险等级'),
+      dataIndex: 'risk_level',
+      render: (text, record) => {
+        if (!text || text === 0) return '-';
+        const colors = { 1: 'yellow', 2: 'orange', 3: 'red' };
+        const labels = { 1: t('低风险'), 2: t('中风险'), 3: t('高风险') };
+        return (
+          <Tooltip content={record.risk_reason || ''}>
+            <Tag color={colors[text]}>{labels[text]}</Tag>
+          </Tooltip>
+        );
+      },
+    },
+    {
       title: t('IP限制'),
       dataIndex: 'allow_ips',
-      render: (text) => {
-        if (!text || text.trim() === '') {
+      render: (text, record) => {
+        const allowText = text;
+        const blockText = record.block_ips;
+        if ((!allowText || allowText.trim() === '') && (!blockText || blockText.trim() === '')) {
           return (
             <Tag color='white' shape='circle'>
               {t('无限制')}
@@ -281,33 +297,38 @@ const TokensTable = () => {
           );
         }
 
-        const ips = text
-          .split('\n')
-          .map((ip) => ip.trim())
-          .filter(Boolean);
+        const ipTags = [];
 
-        const displayIps = ips.slice(0, 1);
-        const extraCount = ips.length - displayIps.length;
+        if (allowText && allowText.trim() !== '') {
+          const allowIps = allowText.split('\n').map((ip) => ip.trim()).filter(Boolean);
+          const displayAllowIps = allowIps.slice(0, 1);
+          const extraAllowCount = allowIps.length - displayAllowIps.length;
+          displayAllowIps.forEach((ip, idx) => {
+            ipTags.push(<Tag key={`allow-${idx}`} shape='circle'>{ip}</Tag>);
+          });
+          if (extraAllowCount > 0) {
+            ipTags.push(
+              <Tooltip key='allow-extra' content={allowIps.slice(1).join(', ')} position='top' showArrow>
+                <Tag shape='circle'>{'+' + extraAllowCount}</Tag>
+              </Tooltip>
+            );
+          }
+        }
 
-        const ipTags = displayIps.map((ip, idx) => (
-          <Tag key={idx} shape='circle'>
-            {ip}
-          </Tag>
-        ));
-
-        if (extraCount > 0) {
-          ipTags.push(
-            <Tooltip
-              key='extra'
-              content={ips.slice(1).join(', ')}
-              position='top'
-              showArrow
-            >
-              <Tag shape='circle'>
-                {'+' + extraCount}
-              </Tag>
-            </Tooltip>
-          );
+        if (blockText && blockText.trim() !== '') {
+          const blockIps = blockText.split('\n').map((ip) => ip.trim()).filter(Boolean);
+          const displayBlockIps = blockIps.slice(0, 1);
+          const extraBlockCount = blockIps.length - displayBlockIps.length;
+          displayBlockIps.forEach((ip, idx) => {
+            ipTags.push(<Tag key={`block-${idx}`} color='red' shape='circle'>{ip}</Tag>);
+          });
+          if (extraBlockCount > 0) {
+            ipTags.push(
+              <Tooltip key='block-extra' content={blockIps.slice(1).join(', ')} position='top' showArrow>
+                <Tag color='red' shape='circle'>{'+' + extraBlockCount}</Tag>
+              </Tooltip>
+            );
+          }
         }
 
         return <Space wrap>{ipTags}</Space>;

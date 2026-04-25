@@ -74,6 +74,7 @@ const SystemSetting = () => {
   const [isLoaded, setIsLoaded] = useState(false);
   const formApiRef = useRef(null);
   const [emailDomainWhitelist, setEmailDomainWhitelist] = useState([]);
+  const [blockedIps, setBlockedIps] = useState('');
   const [showPasswordLoginConfirmModal, setShowPasswordLoginConfirmModal] =
     useState(false);
   const [linuxDOOAuthEnabled, setLinuxDOOAuthEnabled] = useState(false);
@@ -92,6 +93,9 @@ const SystemSetting = () => {
             break;
           case 'EmailDomainWhitelist':
             setEmailDomainWhitelist(item.value ? item.value.split(',') : []);
+            break;
+          case 'BlockedIps':
+            setBlockedIps(item.value || '');
             break;
           case 'PasswordLoginEnabled':
           case 'PasswordRegisterEnabled':
@@ -254,6 +258,15 @@ const SystemSetting = () => {
     } else {
       showError(t('邮箱域名白名单格式不正确'));
     }
+  };
+
+  const submitBlockedIps = async () => {
+    await updateOptions([
+      {
+        key: 'BlockedIps',
+        value: blockedIps,
+      },
+    ]);
   };
 
   const handleAddEmail = () => {
@@ -719,6 +732,30 @@ const SystemSetting = () => {
                     style={{ marginTop: 10 }}
                   >
                     {t('保存邮箱域名白名单设置')}
+                  </Button>
+                </Form.Section>
+              </Card>
+              <Card>
+                <Form.Section text={t('全局 IP 黑名单')}>
+                  <Text>{t('被全局黑名单拦截的请求将收到模糊错误提示')}</Text>
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                  >
+                    <Col xs={24} sm={24} md={24} lg={24} xl={24}>
+                      <Form.TextArea
+                        field='BlockedIps'
+                        label={t('全局 IP 黑名单')}
+                        placeholder={t('全局禁止访问的IP，一行一个')}
+                        value={blockedIps}
+                        onChange={setBlockedIps}
+                        autosize
+                        rows={2}
+                        style={{ width: '100%', marginTop: 16 }}
+                      />
+                    </Col>
+                  </Row>
+                  <Button onClick={submitBlockedIps} style={{ marginTop: 10 }}>
+                    {t('保存黑名单')}
                   </Button>
                 </Form.Section>
               </Card>

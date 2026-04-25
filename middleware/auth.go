@@ -269,6 +269,13 @@ func TokenAuth() func(c *gin.Context) {
 			}
 		}()
 
+		// 异步记录Token IP日志
+		if tokenId, ok := c.Get("token_id"); ok {
+			if id, ok2 := tokenId.(int); ok2 {
+				go model.InsertTokenIpLog(id, c.ClientIP())
+			}
+		}
+
 		c.Next()
 	}
 }
@@ -292,6 +299,8 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 		c.Set("token_model_limit_enabled", false)
 	}
 	c.Set("allow_ips", token.GetIpLimitsMap())
+	c.Set("allow_ips_enabled", token.AllowIpsEnabled)
+	c.Set("block_ips", token.GetBlockIpsMap())
 	c.Set("token_group", token.Group)
 
 	// 设置令牌渠道标签到上下文中

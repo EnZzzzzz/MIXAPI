@@ -44,6 +44,8 @@ const EditToken = (props) => {
   const [models, setModels] = useState([]);
   const [groups, setGroups] = useState([]);
   const [channelTags, setChannelTags] = useState([]); // 添加渠道标签状态
+  const [ipLogs, setIpLogs] = useState([]);
+  const [ipLogsLoading, setIpLogsLoading] = useState(false);
   const isEdit = props.editingToken.id !== undefined;
 
   const getInitValues = () => ({
@@ -53,7 +55,9 @@ const EditToken = (props) => {
     unlimited_quota: false,
     model_limits_enabled: false,
     model_limits: [],
+    allow_ips_enabled: false,
     allow_ips: '',
+    block_ips: '',
     group: '',
     tokenCount: 1,
     rate_limit_per_minute: 0,
@@ -156,6 +160,21 @@ const EditToken = (props) => {
     }
   };
 
+  const loadIpLogs = async () => {
+    if (!isEdit) return;
+    setIpLogsLoading(true);
+    try {
+      let res = await API.get(`/api/token/${props.editingToken.id}/ip-logs?hours=24`);
+      const { success, data } = res.data;
+      if (success) {
+        setIpLogs(data || []);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+    setIpLogsLoading(false);
+  };
+
   const loadToken = async () => {
     setLoading(true);
     let res = await API.get(`/api/token/${props.editingToken.id}`);
@@ -172,6 +191,7 @@ const EditToken = (props) => {
       if (formApiRef.current) {
         formApiRef.current.setValues({ ...getInitValues(), ...data });
       }
+      loadIpLogs();
     } else {
       showError(message);
     }
@@ -229,6 +249,7 @@ const EditToken = (props) => {
       }
       localInputs.model_limits = localInputs.model_limits.join(',');
       localInputs.model_limits_enabled = localInputs.model_limits.length > 0;
+      localInputs.allow_ips_enabled = localInputs.allow_ips_enabled && (localInputs.allow_ips || '').trim().length > 0;
       let res = await API.put(`/api/token/`, {
         ...localInputs,
         id: parseInt(props.editingToken.id),
@@ -265,6 +286,7 @@ const EditToken = (props) => {
         }
         localInputs.model_limits = localInputs.model_limits.join(',');
         localInputs.model_limits_enabled = localInputs.model_limits.length > 0;
+        localInputs.allow_ips_enabled = localInputs.allow_ips_enabled && (localInputs.allow_ips || '').trim().length > 0;
         let res = await API.post(`/api/token/`, localInputs);
         const { success, message } = res.data;
         if (success) {
@@ -548,10 +570,30 @@ const EditToken = (props) => {
                     />
                   </Col>
                   <Col span={24}>
+                    <Form.Switch
+                      field='allow_ips_enabled'
+                      label={t('启用 IP 白名单')}
+                      extraText={t('开启后，仅允许列表中的 IP 访问该令牌')}
+                    />
+                  </Col>
+                  <Col span={24}>
                     <Form.TextArea
                       field='allow_ips'
                       label={t('IP白名单')}
                       placeholder={t('允许的IP，一行一个，不填写则不限制')}
+                      autosize
+                      rows={1}
+                      extraText={t('请勿过度信任此功能，IP可能被伪造')}
+                      showClear
+                      disabled={!values.allow_ips_enabled}
+                      style={{ width: '100%' }}
+                    />
+                  </Col>
+                  <Col span={24}>
+                    <Form.TextArea
+                      field='block_ips'
+                      label={t('IP 黑名单')}
+                      placeholder={t('禁止的IP，一行一个，不填写则不限制')}
                       autosize
                       rows={1}
                       extraText={t('请勿过度信任此功能，IP可能被伪造')}
@@ -609,6 +651,51 @@ const EditToken = (props) => {
                   </Col>
                 </Row>
               </Card>
+
+              {isEdit && props.editingToken.risk_level > 0 && (
+                <Card className='!rounded-2xl shadow-sm border-0' style={{ marginTop: 16 }}>
+                  <div className='flex items-center mb-2'>
+                    <Avatar size='small' color='red' className='mr-2 shadow-md'>
+                      <IconKey size={16} />
+                    </Avatar>
+                    <div>
+                      <Text className='text-lg font-medium'>{t('风险检测')}</Text>
+                      <div className='text-xs text-gray-600'>{t('基于近期登录IP的行为分析')}</div>
+                    </div>
+                  </div>
+                  <Tag
+                    color={props.editingToken.risk_level >= 3 ? 'red' : props.editingToken.risk_level === 2 ? 'orange' : 'yellow'}
+                  >
+                    {props.editingToken.risk_level === 1 ? t('低风险') : props.editingToken.risk_level === 2 ? t('中风险') : t('高风险')}
+                  </Tag>
+                  <Text className='ml-2'>{props.editingToken.risk_reason}</Text>
+                </Card>
+              )}
+
+              {isEdit && (
+                <Card className='!rounded-2xl shadow-sm border-0' style={{ marginTop: 16 }}>
+                  <div className='flex items-center mb-2'>
+                    <Avatar size='small' color='blue' className='mr-2 shadow-md'>
+                      <IconLink size={16} />
+                    </Avatar>
+                    <div>
+                      <Text className='text-lg font-medium'>{t('近期登录 IP')}</Text>
+                      <div className='text-xs text-gray-600'>{t('最近24小时内的登录IP记录')}</div>
+                    </div>
+                  </div>
+                  <Spin spinning={ipLogsLoading}>
+                    {ipLogs.length > 0 ? (
+                      <Space wrap>
+                        {ipLogs.map((log, idx) => (
+                          <Tag key={idx} shape='circle'>{log.ip}</Tag>
+                        ))}
+                      </Space>
+                    ) : (
+                      <Text className='text-gray-500'>{t('暂无记录')}</Text>
+                    )}
+                  </Spin>
+                </Card>
+              )}
             </div>
           )}
         </Form>

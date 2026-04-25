@@ -78,6 +78,20 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "BlockedIps":
+		if option.Value != "" {
+			ips := strings.Split(option.Value, ",")
+			for _, ip := range ips {
+				ip = strings.TrimSpace(ip)
+				if ip != "" && !common.IsIP(ip) {
+					c.JSON(http.StatusOK, gin.H{
+						"success": false,
+						"message": "BlockedIps 包含无效的 IP 地址: " + ip,
+					})
+					return
+				}
+			}
+		}
 	case "WeChatAuthEnabled":
 		if option.Value == "true" && common.WeChatServerAddress == "" {
 			c.JSON(http.StatusOK, gin.H{

@@ -12,6 +12,8 @@ const (
 	ContextKeyTokenId                ContextKey = "token_id"
 	ContextKeyTokenGroup             ContextKey = "token_group"
 	ContextKeyTokenAllowIps          ContextKey = "allow_ips"
+	ContextKeyTokenAllowIpsEnabled   ContextKey = "allow_ips_enabled"
+	ContextKeyTokenBlockIps          ContextKey = "block_ips"
 	ContextKeyTokenSpecificChannelId ContextKey = "specific_channel_id"
 	ContextKeyTokenModelLimitEnabled ContextKey = "token_model_limit_enabled"
 	ContextKeyTokenModelLimit        ContextKey = "token_model_limit"
