@@ -254,6 +254,7 @@ func migrateDB() error {
 		&UsageStatistics{},
 		&TokenUsageLog{},
 		&LogExportTask{},
+		&TokenIpLog{},
 	)
 	if err != nil {
 		return err
@@ -283,6 +284,7 @@ func migrateDBFast() error {
 		{&UsageStatistics{}, "UsageStatistics"},
 		{&TokenUsageLog{}, "TokenUsageLog"},
 		{&LogExportTask{}, "LogExportTask"},
+		{&TokenIpLog{}, "TokenIpLog"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))
