@@ -35,17 +35,20 @@ const UsageStatisticsMonthlyTable = () => {
       title: t('月份'),
       dataIndex: 'date',
       key: 'date',
+      sorter: (a, b) => (a.date || '').localeCompare(b.date || ''),
+      width: 120,
       render: (text) => {
         // 只显示年月部分 YYYY-MM
         const month = text.substring(0, 7);
         return <Text strong>{month}</Text>;
       },
-      width: 120,
     },
     {
       title: t('令牌名称'),
       dataIndex: 'token_name',
       key: 'token_name',
+      sorter: (a, b) => (a.token_name || '').localeCompare(b.token_name || ''),
+      width: 150,
       render: (text, record) => (
         <div>
           <Text>{text || t('未知令牌')}</Text>
@@ -53,22 +56,24 @@ const UsageStatisticsMonthlyTable = () => {
           <Text type="tertiary" size="small">ID: {record.token_id}</Text>
         </div>
       ),
-      width: 150,
     },
     {
       title: t('模型名称'),
       dataIndex: 'model_name',
       key: 'model_name',
+      sorter: (a, b) => (a.model_name || '').localeCompare(b.model_name || ''),
+      width: 150,
       render: (text) => (
         <Tag color="blue" shape="circle">
           {text}
         </Tag>
       ),
-      width: 150,
     },
     {
       title: t('请求统计'),
       key: 'requests',
+      sorter: (a, b) => (a.total_requests || 0) - (b.total_requests || 0),
+      width: 120,
       render: (text, record) => (
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
@@ -85,13 +90,18 @@ const UsageStatisticsMonthlyTable = () => {
           </div>
         </div>
       ),
-      width: 120,
     },
     {
       title: t('成功率'),
       key: 'success_rate',
+      sorter: (a, b) => {
+        const rateA = a.total_requests > 0 ? a.successful_requests / a.total_requests : 0;
+        const rateB = b.total_requests > 0 ? b.successful_requests / b.total_requests : 0;
+        return rateA - rateB;
+      },
+      width: 100,
       render: (text, record) => {
-        const rate = record.total_requests > 0 
+        const rate = record.total_requests > 0
           ? ((record.successful_requests / record.total_requests) * 100).toFixed(1)
           : '0.0';
         const color = parseFloat(rate) >= 95 ? 'green' : parseFloat(rate) >= 80 ? 'orange' : 'red';
@@ -101,11 +111,12 @@ const UsageStatisticsMonthlyTable = () => {
           </Tag>
         );
       },
-      width: 100,
     },
     {
       title: t('Token统计'),
       key: 'tokens',
+      sorter: (a, b) => (a.total_tokens || 0) - (b.total_tokens || 0),
+      width: 150,
       render: (text, record) => (
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
@@ -122,23 +133,25 @@ const UsageStatisticsMonthlyTable = () => {
           </div>
         </div>
       ),
-      width: 150,
     },
     {
       title: t('额度消耗'),
       dataIndex: 'total_quota',
       key: 'total_quota',
+      sorter: (a, b) => (a.total_quota || 0) - (b.total_quota || 0),
+      width: 120,
       render: (text) => (
         <Text strong type="warning">
           {renderQuota(text)}
         </Text>
       ),
-      width: 120,
     },
     {
       title: t('更新时间'),
       dataIndex: 'updated_time',
       key: 'updated_time',
+      sorter: (a, b) => (a.updated_time || 0) - (b.updated_time || 0),
+      width: 150,
       render: (text) => {
         const date = new Date(text * 1000);
         return (
@@ -147,7 +160,6 @@ const UsageStatisticsMonthlyTable = () => {
           </Text>
         );
       },
-      width: 150,
     },
   ];
 
@@ -233,7 +245,7 @@ const UsageStatisticsMonthlyTable = () => {
 
   const loadTokens = async () => {
     try {
-      const res = await API.get('/api/token/');
+      const res = await API.get('/api/token/?size=100');
       const { success, data } = res.data;
       if (success) {
         const tokenOptions = data.items.map(token => ({
