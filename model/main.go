@@ -253,6 +253,7 @@ func migrateDB() error {
 		&Setup{},
 		&UsageStatistics{},
 		&TokenUsageLog{},
+		&ChannelUsageLog{},
 		&LogExportTask{},
 		&TokenIpLog{},
 	)
@@ -283,6 +284,7 @@ func migrateDBFast() error {
 		{&Setup{}, "Setup"},
 		{&UsageStatistics{}, "UsageStatistics"},
 		{&TokenUsageLog{}, "TokenUsageLog"},
+		{&ChannelUsageLog{}, "ChannelUsageLog"},
 		{&LogExportTask{}, "LogExportTask"},
 		{&TokenIpLog{}, "TokenIpLog"},
 	}

@@ -35,7 +35,7 @@ func ExportChannels(c *gin.Context) {
 		"ID", "名称", "类型", "状态", "密钥", "组织", "测试模型",
 		"权重", "创建时间", "测试时间", "响应时间", "基础URL", "其他",
 		"余额", "余额更新时间", "模型", "分组", "已用配额",
-		"模型映射", "状态码映射", "优先级", "自动禁用", "标签", "额外设置", "参数覆盖",
+		"模型映射", "状态码映射", "优先级", "自动禁用", "标签", "额外设置", "参数覆盖", "每分钟模型请求限制",
 	}
 
 	for i, header := range headers {
@@ -72,6 +72,7 @@ func ExportChannels(c *gin.Context) {
 			channel.Tag,
 			channel.Setting,
 			channel.ParamOverride,
+			channel.RateLimitPerMinute,
 		}
 
 		for j, value := range data {

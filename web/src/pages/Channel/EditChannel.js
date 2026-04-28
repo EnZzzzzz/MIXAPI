@@ -103,6 +103,7 @@ const EditChannel = (props) => {
     priority: 0,
     weight: 0,
     tag: '',
+    rate_limit_per_minute: 0,
     multi_key_mode: 'random',
   };
   const [batch, setBatch] = useState(false);
@@ -1372,6 +1373,14 @@ const EditChannel = (props) => {
                       />
                     </Col>
                   </Row>
+
+                  <Form.InputNumber
+                    field='rate_limit_per_minute'
+                    label={t('每分钟模型请求限制')}
+                    placeholder={t('0 表示不限制')}
+                    min={0}
+                    onNumberChange={(value) => handleInputChange('rate_limit_per_minute', value)}
+                  />
 
                   <Form.Switch
                     field='auto_ban'
