@@ -296,7 +296,7 @@ func DeleteHistoryLogs(c *gin.Context) {
 	// 根据清理模式执行不同的操作
 	switch cleanMode {
 	case "body_only":
-		// 仅清理 user_input 和 response_body 字段
+		// 仅清理日志文件（input.json / response.json）
 		count, err = model.CleanLogBodiesOnly(c.Request.Context(), startTimestamp, endTimestamp, 100)
 	default:
 		// 默认模式：删除整行（现有行为）

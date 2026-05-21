@@ -203,6 +203,9 @@ func InitResources() error {
 		return err
 	}
 
+	// Initialize log file storage path
+	common.InitLogFilePath()
+
 	// Initialize Redis
 	err = common.InitRedisClient()
 	if err != nil {

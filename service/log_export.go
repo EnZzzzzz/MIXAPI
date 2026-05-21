@@ -134,6 +134,7 @@ func writeCSVExport(writer io.Writer, task *model.LogExportTask) error {
 			break
 		}
 
+		model.FillLogBodiesFromFiles(logs)
 		for _, log := range logs {
 			record := []string{
 				strconv.Itoa(log.Id),
@@ -184,6 +185,7 @@ func writeJSONExport(writer io.Writer, task *model.LogExportTask) error {
 			break
 		}
 
+		model.FillLogBodiesFromFiles(logs)
 		for _, log := range logs {
 			if !first {
 				if _, err := writer.Write([]byte(",\n")); err != nil {

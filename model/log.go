@@ -6,6 +6,7 @@ import (
 	"log"
 	"one-api/common"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -22,8 +23,9 @@ type Log struct {
 	CreatedAt        int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:2;index:idx_created_at_type"`
 	Type             int    `json:"type" gorm:"index:idx_created_at_type"`
 	Content          string `json:"content"`
-	UserInput        string `json:"user_input" gorm:"type:mediumtext;comment:用户输入内容"`
-	ResponseBody     string `json:"response_body" gorm:"type:mediumtext;comment:模型响应内容"`
+	UserInput        string `json:"user_input" gorm:"-"`
+	ResponseBody     string `json:"response_body" gorm:"-"`
+	LogDir           string `json:"log_dir" gorm:"type:varchar(255);default:''"`
 	Username         string `json:"username" gorm:"index;index:index_username_model_name,priority:2;default:''"`
 	TokenName        string `json:"token_name" gorm:"index;default:''"`
 	ModelName        string `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
@@ -54,7 +56,7 @@ var logListColumns = []string{
 	"id", "user_id", "created_at", "type", "username", "token_name",
 	"model_name", "prompt_tokens", "completion_tokens", "quota",
 	"use_time", "is_stream", "channel_id", "token_id", "group", "ip",
-	"user_input", "response_body", "other",
+	"log_dir", "other",
 }
 
 // channelNameCache 渠道名称内存缓存（1分钟刷新）
@@ -130,6 +132,16 @@ func formatUserLogs(logs []*Log) {
 	}
 }
 
+func FillLogBodiesFromFiles(logs []*Log) {
+	for i := range logs {
+		if logs[i].LogDir == "" {
+			continue
+		}
+		logs[i].UserInput = common.ReadLogInput(common.LogFilePath, logs[i].LogDir)
+		logs[i].ResponseBody = common.ReadLogResponse(common.LogFilePath, logs[i].LogDir)
+	}
+}
+
 func GetLogByKey(key string) (logs []*Log, err error) {
 	if os.Getenv("LOG_SQL_DSN") != "" {
 		var tk Token
@@ -141,6 +153,7 @@ func GetLogByKey(key string) (logs []*Log, err error) {
 		err = LOG_DB.Joins("left join tokens on tokens.id = logs.token_id").Where("tokens.key = ?", strings.TrimPrefix(key, "sk-")).Find(&logs).Error
 	}
 	formatUserLogs(logs)
+	FillLogBodiesFromFiles(logs)
 	return logs, err
 }
 
@@ -246,13 +259,12 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 			needRecordIp = true
 		}
 	}
-	log := &Log{
+	logEntry := &Log{
 		UserId:           userId,
 		Username:         username,
 		CreatedAt:        common.GetTimestamp(),
 		Type:             LogTypeConsume,
 		Content:          params.Content,
-		UserInput:        params.UserInput,
 		PromptTokens:     params.PromptTokens,
 		CompletionTokens: params.CompletionTokens,
 		TokenName:        params.TokenName,
@@ -269,12 +281,22 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 			}
 			return ""
 		}(),
-		Other:        otherStr,
-		ResponseBody: params.ResponseBody,
+		Other: otherStr,
 	}
-	err := LOG_DB.Create(log).Error
+	err := LOG_DB.Create(logEntry).Error
 	if err != nil {
 		common.LogError(c, "failed to record log: "+err.Error())
+		return
+	}
+
+	// 写入文件
+	if common.LogFilePath != "" && (params.UserInput != "" || params.ResponseBody != "") {
+		logDir, writeErr := common.WriteLogFiles(common.LogFilePath, logEntry.Id, params.UserInput, params.ResponseBody)
+		if writeErr != nil {
+			common.SysError("failed to write log files: " + writeErr.Error())
+		} else {
+			LOG_DB.Model(logEntry).Update("log_dir", logDir)
+		}
 	}
 
 	// 异步记录用量统计
@@ -550,14 +572,35 @@ func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64,
 			return total, ctx.Err()
 		}
 
-		result := LOG_DB.Where("created_at < ?", targetTimestamp).Limit(limit).Delete(&Log{})
+		var logs []struct {
+			Id     int    `gorm:"column:id"`
+			LogDir string `gorm:"column:log_dir"`
+		}
+		err := LOG_DB.Where("created_at < ?", targetTimestamp).Limit(limit).Select("id", "log_dir").Find(&logs).Error
+		if err != nil {
+			return total, err
+		}
+		if len(logs) == 0 {
+			break
+		}
+
+		ids := make([]int, 0, len(logs))
+		for _, l := range logs {
+			ids = append(ids, l.Id)
+			if l.LogDir != "" {
+				dir := filepath.Join(common.LogFilePath, l.LogDir)
+				_ = os.RemoveAll(dir)
+			}
+		}
+
+		result := LOG_DB.Where("id IN ?", ids).Delete(&Log{})
 		if nil != result.Error {
 			return total, result.Error
 		}
 
 		total += result.RowsAffected
 
-		if result.RowsAffected < int64(limit) {
+		if len(logs) < limit {
 			break
 		}
 	}
@@ -568,7 +611,6 @@ func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64,
 // DeleteLogsByTimeRange 根据时间范围删除日志
 func DeleteLogsByTimeRange(ctx context.Context, startTimestamp int64, endTimestamp int64, limit int) (int64, error) {
 	var total int64 = 0
-	var result *gorm.DB
 
 	for {
 		if nil != ctx.Err() {
@@ -584,15 +626,35 @@ func DeleteLogsByTimeRange(ctx context.Context, startTimestamp int64, endTimesta
 			query = query.Where("created_at <= ?", endTimestamp)
 		}
 
-		// 执行删除操作
-		result = query.Limit(limit).Delete(&Log{})
+		var logs []struct {
+			Id     int    `gorm:"column:id"`
+			LogDir string `gorm:"column:log_dir"`
+		}
+		err := query.Limit(limit).Select("id", "log_dir").Find(&logs).Error
+		if err != nil {
+			return total, err
+		}
+		if len(logs) == 0 {
+			break
+		}
+
+		ids := make([]int, 0, len(logs))
+		for _, l := range logs {
+			ids = append(ids, l.Id)
+			if l.LogDir != "" {
+				dir := filepath.Join(common.LogFilePath, l.LogDir)
+				_ = os.RemoveAll(dir)
+			}
+		}
+
+		result := LOG_DB.Where("id IN ?", ids).Delete(&Log{})
 		if nil != result.Error {
 			return total, result.Error
 		}
 
 		total += result.RowsAffected
 
-		if result.RowsAffected < int64(limit) {
+		if len(logs) < limit {
 			break
 		}
 	}
@@ -600,8 +662,8 @@ func DeleteLogsByTimeRange(ctx context.Context, startTimestamp int64, endTimesta
 	return total, nil
 }
 
-// CleanLogBodiesOnly 根据时间范围清理日志的 user_input 和 response_body 字段
-// 只清理这两个字段的内容，保留其他日志元数据
+// CleanLogBodiesOnly 根据时间范围清理日志的 user_input 和 response_body 文件
+// 只清理文件内容，保留其他日志元数据
 func CleanLogBodiesOnly(ctx context.Context, startTimestamp int64, endTimestamp int64, limit int) (int64, error) {
 	var total int64 = 0
 
@@ -610,52 +672,43 @@ func CleanLogBodiesOnly(ctx context.Context, startTimestamp int64, endTimestamp 
 			return total, ctx.Err()
 		}
 
-		// 构建查询条件
-		var conditions []string
-		var args []interface{}
-
+		query := LOG_DB
 		if startTimestamp > 0 {
-			conditions = append(conditions, "created_at >= ?")
-			args = append(args, startTimestamp)
+			query = query.Where("created_at >= ?", startTimestamp)
 		}
 		if endTimestamp > 0 {
-			conditions = append(conditions, "created_at <= ?")
-			args = append(args, endTimestamp)
+			query = query.Where("created_at <= ?", endTimestamp)
 		}
 
-		if len(conditions) == 0 {
-			// 如果没有时间条件，使用 1=1
-			conditions = append(conditions, "1=1")
+		var logs []struct {
+			Id     int    `gorm:"column:id"`
+			LogDir string `gorm:"column:log_dir"`
+		}
+		err := query.Limit(limit).Select("id", "log_dir").Find(&logs).Error
+		if err != nil {
+			return total, err
+		}
+		if len(logs) == 0 {
+			break
 		}
 
-		// 使用 JOIN 语法，MySQL 支持这种方式
-		// 先查询出需要更新的 ID，然后用 JOIN 更新
-		whereClause := strings.Join(conditions, " AND ")
-
-		var sql string
-		switch {
-		case common.UsingMySQL:
-			// MySQL 使用 JOIN 语法（MySQL 不支持 IN 子查询中使用 LIMIT）
-			sql = fmt.Sprintf("UPDATE logs l JOIN (SELECT id FROM logs WHERE %s ORDER BY id LIMIT %d) AS sub ON l.id = sub.id SET l.user_input = '', l.response_body = ''", whereClause, limit)
-		case common.UsingPostgreSQL:
-			// PostgreSQL 使用 UPDATE ... FROM 语法
-			sql = fmt.Sprintf("UPDATE logs SET user_input = '', response_body = '' FROM (SELECT id FROM logs WHERE %s ORDER BY id LIMIT %d) AS sub WHERE logs.id = sub.id", whereClause, limit)
-		case common.UsingSQLite:
-			// SQLite 支持 IN 子查询中使用 LIMIT
-			sql = fmt.Sprintf("UPDATE logs SET user_input = '', response_body = '' WHERE id IN (SELECT id FROM logs WHERE %s ORDER BY id LIMIT %d)", whereClause, limit)
-		default:
-			// 默认使用 SQLite 语法
-			sql = fmt.Sprintf("UPDATE logs SET user_input = '', response_body = '' WHERE id IN (SELECT id FROM logs WHERE %s ORDER BY id LIMIT %d)", whereClause, limit)
+		ids := make([]int, 0, len(logs))
+		for _, l := range logs {
+			ids = append(ids, l.Id)
+			if l.LogDir != "" {
+				dir := filepath.Join(common.LogFilePath, l.LogDir)
+				_ = os.RemoveAll(dir)
+			}
 		}
 
-		result := LOG_DB.WithContext(ctx).Exec(sql, args...)
+		result := LOG_DB.Where("id IN ?", ids).Update("log_dir", "")
 		if nil != result.Error {
 			return total, result.Error
 		}
 
 		total += result.RowsAffected
 
-		if result.RowsAffected < int64(limit) {
+		if len(logs) < limit {
 			break
 		}
 	}

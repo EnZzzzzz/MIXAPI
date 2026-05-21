@@ -75,6 +75,7 @@ var LogConsumeEnabled = true
 var LogUserInputEnabled = true
 var LogDetailEnabled = true      // 是否开启详细记录（完整请求/响应）
 var LogDetailMaxSize = 10 * 1024 // 单条记录最大大小（KB），默认10MB
+var LogFilePath = "./logs"       // 日志文件存储根目录
 
 var SMTPServer = ""
 var SMTPPort = 587
