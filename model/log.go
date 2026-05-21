@@ -631,7 +631,7 @@ func DeleteLogsByTimeRange(ctx context.Context, startTimestamp int64, endTimesta
 		}
 
 		// 构建查询条件
-		query := LOG_DB
+		query := LOG_DB.Model(&Log{})
 		if startTimestamp > 0 {
 			query = query.Where("created_at >= ?", startTimestamp)
 		}
@@ -685,7 +685,7 @@ func CleanLogBodiesOnly(ctx context.Context, startTimestamp int64, endTimestamp 
 			return total, ctx.Err()
 		}
 
-		query := LOG_DB
+		query := LOG_DB.Model(&Log{})
 		if startTimestamp > 0 {
 			query = query.Where("created_at >= ?", startTimestamp)
 		}
@@ -714,7 +714,7 @@ func CleanLogBodiesOnly(ctx context.Context, startTimestamp int64, endTimestamp 
 			}
 		}
 
-		result := LOG_DB.Where("id IN ?", ids).Update("log_dir", "")
+		result := LOG_DB.Model(&Log{}).Where("id IN ?", ids).Update("log_dir", "")
 		if nil != result.Error {
 			return total, result.Error
 		}
