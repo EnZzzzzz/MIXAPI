@@ -169,6 +169,7 @@ func SetApiRouter(router *gin.Engine) {
 		logRoute.Use(middleware.CORS())
 		{
 			logRoute.GET("/token", controller.GetLogByKey)
+			logRoute.GET("/detail/:id", middleware.UserAuth(), controller.GetLogDetail)
 
 		}
 		// 令牌查询接口

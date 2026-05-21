@@ -115,6 +115,51 @@ const LogsTable = () => {
     }
   }
 
+  async function showLogDetailModal(logId, field, title) {
+    try {
+      const res = await API.get(`/api/log/detail/${logId}`);
+      if (!res.data.success) {
+        showError(res.data.message || t('获取详情失败'));
+        return;
+      }
+      let content = res.data.data?.[field] || '';
+      if (content) {
+        try {
+          const parsed = JSON.parse(content);
+          content = JSON.stringify(parsed, null, 2);
+        } catch (e) {
+          // 不是 JSON，保持原样
+        }
+      }
+      Modal.info({
+        title: title,
+        content: (
+          <div style={{ padding: 12, maxHeight: 600, overflow: 'auto' }}>
+            <pre style={{
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+              backgroundColor: '#f5f5f5',
+              padding: 16,
+              borderRadius: 8,
+              fontSize: 12
+            }}>
+              {content || t('无')}
+            </pre>
+          </div>
+        ),
+        centered: true,
+        width: 800,
+        okText: t('复制'),
+        onOk: () => {
+          copy(content);
+          showSuccess(t('已复制到剪贴板'));
+        },
+      });
+    } catch (err) {
+      showError(err.message || t('获取详情失败'));
+    }
+  }
+
   function renderIsStream(bool) {
     if (bool) {
       return (
@@ -509,7 +554,7 @@ const LogsTable = () => {
       render: (text, record, index) => {
         // 只显示消费和错误类型的日志的用户输入
         if (record.type === 2 || record.type === 5) {
-          if (!text || text.trim() === '') {
+          if (!record.log_dir) {
             return (
               <Tag color='grey' shape='circle'>
                 {t('无')}
@@ -523,38 +568,7 @@ const LogsTable = () => {
               size='small'
               onClick={(e) => {
                 e.stopPropagation();
-                let content = text;
-                // 尝试格式化 JSON
-                try {
-                  const parsed = JSON.parse(text);
-                  content = JSON.stringify(parsed, null, 2);
-                } catch (e) {
-                  // 不是 JSON，保持原样
-                }
-                Modal.info({
-                  title: t('用户输入详情'),
-                  content: (
-                    <div style={{ padding: 12, maxHeight: 600, overflow: 'auto' }}>
-                      <pre style={{
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-all',
-                        backgroundColor: '#f5f5f5',
-                        padding: 16,
-                        borderRadius: 8,
-                        fontSize: 12
-                      }}>
-                        {content}
-                      </pre>
-                    </div>
-                  ),
-                  centered: true,
-                  width: 800,
-                  okText: t('复制'),
-                  onOk: () => {
-                    copy(content);
-                    showSuccess(t('已复制到剪贴板'));
-                  },
-                });
+                showLogDetailModal(record.id, 'user_input', t('用户输入详情'));
               }}
             >
               {t('查看')}
@@ -572,7 +586,7 @@ const LogsTable = () => {
       render: (text, record, index) => {
         // 只显示消费和错误类型的日志的模型输出
         if (record.type === 2 || record.type === 5) {
-          if (!text || text.trim() === '') {
+          if (!record.log_dir) {
             return (
               <Tag color='grey' shape='circle'>
                 {t('无')}
@@ -586,38 +600,7 @@ const LogsTable = () => {
               size='small'
               onClick={(e) => {
                 e.stopPropagation();
-                let content = text;
-                // 尝试格式化 JSON
-                try {
-                  const parsed = JSON.parse(text);
-                  content = JSON.stringify(parsed, null, 2);
-                } catch (e) {
-                  // 不是 JSON，保持原样
-                }
-                Modal.info({
-                  title: t('模型输出详情'),
-                  content: (
-                    <div style={{ padding: 12, maxHeight: 600, overflow: 'auto' }}>
-                      <pre style={{
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-all',
-                        backgroundColor: '#f5f5f5',
-                        padding: 16,
-                        borderRadius: 8,
-                        fontSize: 12
-                      }}>
-                        {content}
-                      </pre>
-                    </div>
-                  ),
-                  centered: true,
-                  width: 800,
-                  okText: t('复制'),
-                  onOk: () => {
-                    copy(content);
-                    showSuccess(t('已复制到剪贴板'));
-                  },
-                });
+                showLogDetailModal(record.id, 'response_body', t('模型输出详情'));
               }}
             >
               {t('查看')}

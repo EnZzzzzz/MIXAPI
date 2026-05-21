@@ -207,6 +207,41 @@ func GetLogByKey(c *gin.Context) {
 	})
 }
 
+func GetLogDetail(c *gin.Context) {
+	userId := c.GetInt("id")
+	userRole := c.GetInt("role")
+
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "invalid log id",
+		})
+		return
+	}
+
+	log, err := model.GetLogByID(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	if log.UserId != userId && userRole < common.RoleAdminUser {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "no permission",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    log,
+	})
+}
+
 func GetLogsStat(c *gin.Context) {
 	logType, _ := strconv.Atoi(c.Query("type"))
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)

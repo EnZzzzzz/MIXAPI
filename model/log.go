@@ -157,6 +157,19 @@ func GetLogByKey(key string) (logs []*Log, err error) {
 	return logs, err
 }
 
+func GetLogByID(id int) (*Log, error) {
+	var log Log
+	err := LOG_DB.First(&log, id).Error
+	if err != nil {
+		return nil, err
+	}
+	if log.LogDir != "" {
+		log.UserInput = common.ReadLogInput(common.LogFilePath, log.LogDir)
+		log.ResponseBody = common.ReadLogResponse(common.LogFilePath, log.LogDir)
+	}
+	return &log, nil
+}
+
 func RecordLog(userId int, logType int, content string) {
 	if logType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
