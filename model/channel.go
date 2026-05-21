@@ -12,6 +12,7 @@ import (
 	"one-api/types"
 	"strings"
 	"sync"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -41,9 +42,10 @@ type Channel struct {
 	Priority          *int64  `json:"priority" gorm:"bigint;default:0"`
 	AutoBan           *int    `json:"auto_ban" gorm:"default:1"`
 	OtherInfo         string  `json:"other_info"`
-	Tag               *string `json:"tag" gorm:"index"`
-	Setting           *string `json:"setting" gorm:"type:text"` // 渠道额外设置
-	ParamOverride     *string `json:"param_override" gorm:"type:text"`
+	Tag                *string `json:"tag" gorm:"index"`
+	Setting            *string `json:"setting" gorm:"type:text"` // 渠道额外设置
+	ParamOverride      *string `json:"param_override" gorm:"type:text"`
+	RateLimitPerMinute int     `json:"rate_limit_per_minute" gorm:"default:0"` // 每分钟模型请求限制，0=不限制
 	// add after v0.8.5
 	ChannelInfo ChannelInfo `json:"channel_info" gorm:"type:json"`
 }
@@ -906,4 +908,53 @@ func CountChannelsGroupByType() (map[int64]int64, error) {
 		counts[r.Type] = r.Count
 	}
 	return counts, nil
+}
+
+// ChannelUsageLog 渠道使用日志表（用于频率限制）
+type ChannelUsageLog struct {
+	Id        int    `json:"id" gorm:"primaryKey"`
+	ChannelId int    `json:"channel_id" gorm:"index:idx_channel_model_created"`
+	ModelName string `json:"model_name" gorm:"size:255;index:idx_channel_model_created"`
+	CreatedAt int64  `json:"created_at" gorm:"index:idx_channel_model_created;index:idx_channel_usage_created"`
+}
+
+func (ChannelUsageLog) TableName() string {
+	return "channel_usage_logs"
+}
+
+// CheckChannelRateLimit 检查渠道的每分钟模型请求频率限制
+func CheckChannelRateLimit(channelId int, modelName string, rateLimitPerMinute int) error {
+	if rateLimitPerMinute <= 0 {
+		return nil
+	}
+
+	currentMinute := time.Now().Truncate(time.Minute).Unix()
+
+	var count int64
+	err := DB.Model(&ChannelUsageLog{}).Where("channel_id = ? AND model_name = ? AND created_at >= ?", channelId, modelName, currentMinute).Count(&count).Error
+	if err != nil {
+		common.SysError("检查渠道分钟级使用次数失败: " + err.Error())
+		return errors.New("系统错误，请稍后再试")
+	}
+
+	if int(count) >= rateLimitPerMinute {
+		return errors.New("超出渠道分钟限制，请稍后再试")
+	}
+
+	return nil
+}
+
+// RecordChannelUsage 记录渠道使用（用于频率限制）
+func RecordChannelUsage(channelId int, modelName string) error {
+	if channelId <= 0 || modelName == "" {
+		return errors.New("channelId和modelName不能为空")
+	}
+
+	usageLog := ChannelUsageLog{
+		ChannelId: channelId,
+		ModelName: modelName,
+		CreatedAt: time.Now().Unix(),
+	}
+
+	return DB.Create(&usageLog).Error
 }

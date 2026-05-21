@@ -220,6 +220,7 @@ func RelayClaude(c *gin.Context) {
 
 func relayRequest(c *gin.Context, relayMode int, channel *model.Channel) *types.NewAPIError {
 	addUsedChannel(c, channel.Id)
+	recordChannelUsage(c)
 	requestBody, _ := common.GetRequestBody(c)
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
 	return relayHandler(c, relayMode)
@@ -227,6 +228,7 @@ func relayRequest(c *gin.Context, relayMode int, channel *model.Channel) *types.
 
 func wssRequest(c *gin.Context, ws *websocket.Conn, relayMode int, channel *model.Channel) *types.NewAPIError {
 	addUsedChannel(c, channel.Id)
+	recordChannelUsage(c)
 	requestBody, _ := common.GetRequestBody(c)
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
 	return relay.WssHelper(c, ws)
@@ -234,6 +236,7 @@ func wssRequest(c *gin.Context, ws *websocket.Conn, relayMode int, channel *mode
 
 func claudeRequest(c *gin.Context, channel *model.Channel) *types.NewAPIError {
 	addUsedChannel(c, channel.Id)
+	recordChannelUsage(c)
 	requestBody, _ := common.GetRequestBody(c)
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
 	return relay.ClaudeHelper(c)
@@ -243,6 +246,18 @@ func addUsedChannel(c *gin.Context, channelId int) {
 	useChannel := c.GetStringSlice("use_channel")
 	useChannel = append(useChannel, fmt.Sprintf("%d", channelId))
 	c.Set("use_channel", useChannel)
+}
+
+func recordChannelUsage(c *gin.Context) {
+	go func() {
+		channelId := c.GetInt("channel_id")
+		modelName := c.GetString("original_model")
+		if channelId > 0 && modelName != "" {
+			if recordErr := model.RecordChannelUsage(channelId, modelName); recordErr != nil {
+				common.SysError("failed to record channel usage: " + recordErr.Error())
+			}
+		}
+	}()
 }
 
 func getChannel(c *gin.Context, group, originalModel string, retryCount int) (*model.Channel, *types.NewAPIError) {

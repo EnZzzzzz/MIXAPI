@@ -182,6 +182,10 @@ func ImportChannels(c *gin.Context) {
 				if value != "" {
 					channel.ParamOverride = &value
 				}
+			case "每分钟模型请求限制":
+				if v, err := strconv.Atoi(value); err == nil {
+					channel.RateLimitPerMinute = v
+				}
 			}
 		}
 

@@ -147,6 +147,13 @@ func Distribute() func(c *gin.Context) {
 				}
 			}
 		}
+		// 渠道每分钟模型请求限制
+		if channel.RateLimitPerMinute > 0 {
+			if err := model.CheckChannelRateLimit(channel.Id, modelRequest.Model, channel.RateLimitPerMinute); err != nil {
+				abortWithOpenAiMessage(c, http.StatusTooManyRequests, err.Error())
+				return
+			}
+		}
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
 		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
 		c.Next()
