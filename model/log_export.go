@@ -13,11 +13,13 @@ type LogExportTask struct {
 	Username  string `json:"username" gorm:"type:varchar(100)"`
 	ModelName string `json:"model_name" gorm:"type:varchar(100)"`
 	Format    string `json:"format" gorm:"type:varchar(10)"` // json / csv
-	FilePath  string `json:"file_path" gorm:"type:varchar(255)"`
-	FileSize  int64  `json:"file_size"`
-	ErrorMsg  string `json:"error_msg" gorm:"type:text"`
-	CreatedAt int64  `json:"created_at" gorm:"index"`
-	UpdatedAt int64  `json:"updated_at"`
+	FilePath        string `json:"file_path" gorm:"type:varchar(255)"`
+	FileSize        int64  `json:"file_size"`
+	ErrorMsg        string `json:"error_msg" gorm:"type:text"`
+	BodyExportMode  string `json:"body_export_mode" gorm:"type:varchar(20);default:'full'"` // full / truncated / none
+	BodyExportLength int   `json:"body_export_length" gorm:"default:500"`
+	CreatedAt       int64  `json:"created_at" gorm:"index"`
+	UpdatedAt       int64  `json:"updated_at"`
 }
 
 func (LogExportTask) TableName() string {

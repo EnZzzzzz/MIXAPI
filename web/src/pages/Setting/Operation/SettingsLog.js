@@ -14,6 +14,7 @@ import {
   Tag,
   Tooltip,
   Popconfirm,
+  InputNumber,
 } from '@douyinfe/semi-ui';
 import {
   Download,
@@ -47,6 +48,8 @@ export default function SettingsLog(props) {
     format: 'json',
     username: '',
     modelName: '',
+    bodyExportMode: 'full',
+    bodyExportLength: 500,
   });
   const [cleanInputs, setCleanInputs] = useState({
     startTimestamp: dayjs().subtract(1, 'month').startOf('day').toDate(),
@@ -175,6 +178,8 @@ export default function SettingsLog(props) {
         format: exportInputs.format,
         username: exportInputs.username || '',
         model_name: exportInputs.modelName || '',
+        body_export_mode: exportInputs.bodyExportMode || 'full',
+        body_export_length: parseInt(exportInputs.bodyExportLength, 10) || 500,
       };
 
       const res = await API.post('/api/log/export', payload);
@@ -541,6 +546,39 @@ export default function SettingsLog(props) {
                     });
                   }}
                 />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.RadioGroup
+                  label={t('输入输出内容')}
+                  field={'exportBodyExportMode'}
+                  type='button'
+                  initValue={exportInputs.bodyExportMode}
+                  onChange={(e) => {
+                    setExportInputs({
+                      ...exportInputs,
+                      bodyExportMode: e.target.value,
+                    });
+                  }}
+                >
+                  <Radio value='full'>{t('完整')}</Radio>
+                  <Radio value='truncated'>{t('截断')}</Radio>
+                  <Radio value='none'>{t('不包含')}</Radio>
+                </Form.RadioGroup>
+                {exportInputs.bodyExportMode === 'truncated' && (
+                  <Form.InputNumber
+                    label={t('截断长度')}
+                    field={'exportBodyExportLength'}
+                    initValue={exportInputs.bodyExportLength}
+                    min={1}
+                    max={100000}
+                    onChange={(value) => {
+                      setExportInputs({
+                        ...exportInputs,
+                        bodyExportLength: value,
+                      });
+                    }}
+                  />
+                )}
               </Col>
             </Row>
             <Row>

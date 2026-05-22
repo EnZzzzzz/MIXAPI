@@ -363,11 +363,13 @@ func CreateExportTask(c *gin.Context) {
 	}
 
 	var req struct {
-		StartTimestamp int64  `json:"start_timestamp"`
-		EndTimestamp   int64  `json:"end_timestamp"`
-		Format         string `json:"format"`
-		Username       string `json:"username"`
-		ModelName      string `json:"model_name"`
+		StartTimestamp   int64  `json:"start_timestamp"`
+		EndTimestamp     int64  `json:"end_timestamp"`
+		Format           string `json:"format"`
+		Username         string `json:"username"`
+		ModelName        string `json:"model_name"`
+		BodyExportMode   string `json:"body_export_mode"`
+		BodyExportLength int    `json:"body_export_length"`
 	}
 
 	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
@@ -383,7 +385,7 @@ func CreateExportTask(c *gin.Context) {
 		return
 	}
 
-	task, err := service.CreateExportTask(userId, req.StartTimestamp, req.EndTimestamp, req.Username, req.ModelName, req.Format)
+	task, err := service.CreateExportTask(userId, req.StartTimestamp, req.EndTimestamp, req.Username, req.ModelName, req.Format, req.BodyExportMode, req.BodyExportLength)
 	if err != nil {
 		common.ApiError(c, err)
 		return

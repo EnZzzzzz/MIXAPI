@@ -23,19 +23,27 @@ const (
 	ExportMaxAge        = 24 * time.Hour
 )
 
-func CreateExportTask(userId int, startTime, endTime int64, username, modelName, format string) (*model.LogExportTask, error) {
+func CreateExportTask(userId int, startTime, endTime int64, username, modelName, format, bodyExportMode string, bodyExportLength int) (*model.LogExportTask, error) {
 	if format != "csv" && format != "json" {
 		format = "json"
 	}
+	if bodyExportMode != "full" && bodyExportMode != "truncated" && bodyExportMode != "none" {
+		bodyExportMode = "full"
+	}
+	if bodyExportLength <= 0 {
+		bodyExportLength = 500
+	}
 
 	task := &model.LogExportTask{
-		UserId:    userId,
-		Status:    "pending",
-		StartTime: startTime,
-		EndTime:   endTime,
-		Username:  username,
-		ModelName: modelName,
-		Format:    format,
+		UserId:           userId,
+		Status:           "pending",
+		StartTime:        startTime,
+		EndTime:          endTime,
+		Username:         username,
+		ModelName:        modelName,
+		Format:           format,
+		BodyExportMode:   bodyExportMode,
+		BodyExportLength: bodyExportLength,
 	}
 
 	if err := task.Insert(); err != nil {
@@ -106,6 +114,29 @@ func processExportTask(taskID int64) {
 	}
 }
 
+func applyBodyExportMode(log *model.Log, mode string, length int) {
+	if mode == "none" {
+		log.UserInput = ""
+		log.ResponseBody = ""
+		return
+	}
+	if mode == "truncated" {
+		log.UserInput = truncateString(log.UserInput, length)
+		log.ResponseBody = truncateString(log.ResponseBody, length)
+	}
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	return string(runes[:maxLen])
+}
+
 func markTaskFailed(task *model.LogExportTask, errMsg string) {
 	task.Status = "failed"
 	task.ErrorMsg = errMsg
@@ -136,6 +167,7 @@ func writeCSVExport(writer io.Writer, task *model.LogExportTask) error {
 
 		model.FillLogBodiesFromFiles(logs)
 		for _, log := range logs {
+			applyBodyExportMode(log, task.BodyExportMode, task.BodyExportLength)
 			record := []string{
 				strconv.Itoa(log.Id),
 				strconv.Itoa(log.UserId),
@@ -187,6 +219,7 @@ func writeJSONExport(writer io.Writer, task *model.LogExportTask) error {
 
 		model.FillLogBodiesFromFiles(logs)
 		for _, log := range logs {
+			applyBodyExportMode(log, task.BodyExportMode, task.BodyExportLength)
 			if !first {
 				if _, err := writer.Write([]byte(",\n")); err != nil {
 					return fmt.Errorf("write json separator failed: %w", err)
